@@ -11,7 +11,17 @@ import type {
   UUID,
 } from './types'
 
-const BASE = '/api/v1'
+/**
+ * In development this stays empty, so requests go to a relative "/api/v1/..."
+ * and Vite's dev proxy forwards them to the backend — one origin, no CORS.
+ *
+ * In production the frontend and backend are on different domains, so
+ * VITE_API_BASE_URL must be set to the backend's origin at build time. Vite
+ * inlines it into the bundle; it is not read at runtime.
+ */
+const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
+const BASE = `${API_ORIGIN}/api/v1`
+
 const TOKEN_KEY = 'resume-tailor.token'
 
 export class ApiError extends Error {

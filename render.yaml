@@ -1,0 +1,62 @@
+# Render Blueprint — the deploy lives in the repo, not in dashboard clicks.
+# Create it via Render → New → Blueprint, pointed at this repository.
+#
+# Values marked `sync: false` are deliberately NOT in this file: they are
+# secrets, and this repository is public. Render prompts for them once, on
+# first deploy, and stores them encrypted.
+
+services:
+  - type: web
+    name: resume-tailor-api
+    runtime: docker
+    plan: free
+    # Closest Render region to India.
+    region: singapore
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+
+      # The API docs are the showcase on a portfolio deployment, so they stay on.
+      - key: ENABLE_DOCS
+        value: true
+
+      # Container filesystems are ephemeral — object storage is mandatory here.
+      - key: STORAGE_BACKEND
+        value: s3
+
+      # Generated once by Render and then held stable. Changing it would
+      # invalidate every issued JWT and sign everyone out.
+      - key: SECRET_KEY
+        generateValue: true
+
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 10080
+
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: GEMINI_MODEL
+        value: gemini-flash-latest
+
+      # ── Secrets, entered in the Render dashboard ──────────────────────
+      # Neon connection string, with the postgresql+psycopg:// prefix.
+      - key: DATABASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+
+      # Must be set to the deployed frontend origin once Vercel is live, e.g.
+      # https://resume-tailor.vercel.app — the browser blocks every request
+      # otherwise. Comma-separated for multiple origins.
+      - key: CORS_ORIGINS
+        sync: false

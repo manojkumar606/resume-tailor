@@ -108,6 +108,63 @@ Tests run against in-memory SQLite so no database is needed. This keeps the
 suite fast but will not catch Postgres-specific schema issues — those are
 covered by running `alembic upgrade head` against real Postgres.
 
+## Deployment
+
+Backend on Render (Docker), frontend on Vercel, database on Neon, files on
+Cloudflare R2. The Render service is defined in `render.yaml`, so the deploy is
+version-controlled rather than a set of dashboard clicks.
+
+### 1. Cloudflare R2
+
+Local disk cannot be used in production — container filesystems are wiped on
+every redeploy and on every sleep/wake cycle, so uploads would silently vanish.
+
+1. Cloudflare dashboard → R2 → create a bucket.
+2. R2 → Manage API Tokens → create a token with **Object Read & Write**.
+3. Note the bucket name, access key id, secret, and account id. The endpoint is
+   `https://<account-id>.r2.cloudflarestorage.com` — no bucket name in it.
+
+### 2. Render
+
+New → Blueprint → point at this repo. Render reads `render.yaml` and prompts for
+the values marked `sync: false`:
+
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | Neon string, `postgresql+psycopg://` prefix |
+| `GEMINI_API_KEY` | from Google AI Studio |
+| `S3_ENDPOINT_URL` | `https://<account-id>.r2.cloudflarestorage.com` |
+| `S3_BUCKET` | R2 bucket name |
+| `S3_ACCESS_KEY_ID` | R2 token key id |
+| `S3_SECRET_ACCESS_KEY` | R2 token secret |
+| `CORS_ORIGINS` | the Vercel URL — set after step 3 |
+
+Migrations run automatically on container start.
+
+### 3. Vercel
+
+Import the repo, then:
+
+- **Root directory**: `frontend`
+- **Environment variable**: `VITE_API_BASE_URL` = the Render URL
+  (e.g. `https://resume-tailor-api.onrender.com`, no trailing slash)
+
+Vite inlines this at *build* time, so changing it requires a redeploy — it is
+not read at runtime.
+
+### 4. Close the loop
+
+Set `CORS_ORIGINS` on Render to the Vercel URL and redeploy. Without it the
+browser blocks every request.
+
+### Known limits of the free tier
+
+- Render free instances sleep after ~15 minutes idle; the next request pays a
+  cold start of roughly a minute.
+- Tailoring holds the HTTP request open for 10–20 seconds. It works, but it ties
+  up a worker for the duration. Moving it behind a queue is the main reason the
+  `tailorings` table carries a `status` column.
+
 ## Migrations
 
 ```bash

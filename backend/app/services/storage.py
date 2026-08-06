@@ -8,6 +8,7 @@ code change.
 import re
 import uuid
 from abc import ABC, abstractmethod
+from functools import lru_cache
 from pathlib import Path
 
 from app.core.config import settings
@@ -78,13 +79,110 @@ class LocalStorage(StorageBackend):
         path.unlink(missing_ok=True)
 
 
+class S3Storage(StorageBackend):
+    """Any S3-compatible object store. Configured for Cloudflare R2 by default.
+
+    Used in production because container filesystems are ephemeral: a redeploy
+    or a sleep/wake cycle on a free host wipes local uploads.
+    """
+
+    def __init__(
+        self,
+        *,
+        endpoint_url: str,
+        bucket: str,
+        access_key_id: str,
+        secret_access_key: str,
+    ):
+        missing = [
+            name
+            for name, value in (
+                ("S3_ENDPOINT_URL", endpoint_url),
+                ("S3_BUCKET", bucket),
+                ("S3_ACCESS_KEY_ID", access_key_id),
+                ("S3_SECRET_ACCESS_KEY", secret_access_key),
+            )
+            if not value
+        ]
+        if missing:
+            raise StorageError(
+                f"STORAGE_BACKEND=s3 but these are unset: {', '.join(missing)}"
+            )
+
+        import boto3
+        from botocore.config import Config
+
+        self.bucket = bucket
+        self._client = boto3.client(
+            "s3",
+            endpoint_url=endpoint_url,
+            aws_access_key_id=access_key_id,
+            aws_secret_access_key=secret_access_key,
+            # R2 has no regions but the SDK insists on one; "auto" is what
+            # Cloudflare documents.
+            region_name="auto",
+            config=Config(signature_version="s3v4", retries={"max_attempts": 3}),
+        )
+
+    @staticmethod
+    def _check(key: str) -> str:
+        # Same validation as the local backend. Object stores treat "../" as a
+        # literal key rather than traversal, but a consistent key shape means a
+        # key written by one backend is always readable by the other.
+        if not _SAFE_KEY.match(key):
+            raise StorageError(f"Unsafe storage key: {key!r}")
+        return key
+
+    def save(self, key: str, data: bytes) -> None:
+        from botocore.exceptions import BotoCoreError, ClientError
+
+        try:
+            self._client.put_object(Bucket=self.bucket, Key=self._check(key), Body=data)
+        except (ClientError, BotoCoreError) as exc:
+            raise StorageError(f"Could not upload {key!r}: {exc}") from exc
+
+    def load(self, key: str) -> bytes:
+        from botocore.exceptions import BotoCoreError, ClientError
+
+        try:
+            response = self._client.get_object(
+                Bucket=self.bucket, Key=self._check(key)
+            )
+            return response["Body"].read()
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            # Map "not there" to the same error the local backend raises, so
+            # callers return 404 rather than 500.
+            if code in {"NoSuchKey", "404", "NotFound"}:
+                raise StorageError(f"No stored object for key: {key!r}") from exc
+            raise StorageError(f"Could not read {key!r}: {exc}") from exc
+        except BotoCoreError as exc:
+            raise StorageError(f"Could not read {key!r}: {exc}") from exc
+
+    def delete(self, key: str) -> None:
+        from botocore.exceptions import BotoCoreError, ClientError
+
+        try:
+            self._client.delete_object(Bucket=self.bucket, Key=self._check(key))
+        except (ClientError, BotoCoreError) as exc:
+            raise StorageError(f"Could not delete {key!r}: {exc}") from exc
+
+
+@lru_cache
 def get_storage() -> StorageBackend:
+    """Cached: building a boto3 client per request is measurable overhead, and
+    LocalStorage would re-run mkdir every time."""
     backend = settings.STORAGE_BACKEND.lower()
+
     if backend == "local":
         return LocalStorage(settings.LOCAL_STORAGE_DIR)
+
     if backend == "s3":
-        raise StorageError(
-            "The S3 backend is not implemented yet. Set STORAGE_BACKEND=local "
-            "for development."
+        return S3Storage(
+            endpoint_url=settings.S3_ENDPOINT_URL,
+            bucket=settings.S3_BUCKET,
+            access_key_id=settings.S3_ACCESS_KEY_ID,
+            secret_access_key=settings.S3_SECRET_ACCESS_KEY,
         )
+
     raise StorageError(f"Unknown STORAGE_BACKEND: {settings.STORAGE_BACKEND!r}")

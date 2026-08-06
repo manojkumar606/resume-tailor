@@ -10,10 +10,15 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 # backend/app/core/config.py → parents[3] is the repo root
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
+# In a container only `backend/` is copied, so there is no repo-root .env and
+# configuration comes entirely from real environment variables. Passing a
+# non-existent path is harmless, but resolving it to None keeps intent obvious.
+_ENV_FILE = REPO_ROOT / ".env"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=REPO_ROOT / ".env",
+        env_file=_ENV_FILE if _ENV_FILE.is_file() else None,
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=True,
@@ -56,9 +61,17 @@ class Settings(BaseSettings):
             return [o.strip() for o in v.split(",") if o.strip()]
         return v
 
+    # Interactive API docs. Off by default in production, but worth turning on
+    # deliberately for a portfolio deployment where the API is the showcase.
+    ENABLE_DOCS: bool = False
+
     @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT.lower() == "production"
+
+    @property
+    def docs_enabled(self) -> bool:
+        return self.ENABLE_DOCS or not self.is_production
 
 
 @lru_cache
