@@ -1,0 +1,37 @@
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Boolean, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.models.base import Base, TimestampMixin, UUIDMixin
+
+if TYPE_CHECKING:
+    from app.models.application import Application
+    from app.models.job import Job
+    from app.models.resume import Resume
+    from app.models.tailoring import Tailoring
+
+
+class User(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "users"
+
+    email: Mapped[str] = mapped_column(
+        String(320), unique=True, index=True, nullable=False
+    )
+    hashed_password: Mapped[str] = mapped_column(String(128), nullable=False)
+    full_name: Mapped[str | None] = mapped_column(String(200))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_superuser: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    resumes: Mapped[list["Resume"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    jobs: Mapped[list["Job"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    tailorings: Mapped[list["Tailoring"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    applications: Mapped[list["Application"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
