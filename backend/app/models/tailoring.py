@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, String, Text, Uuid
+from sqlalchemy import JSON, DateTime, Enum, Float, ForeignKey, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
@@ -49,6 +49,10 @@ class Tailoring(UUIDMixin, TimestampMixin, Base):
     tailored_text: Mapped[str | None] = mapped_column(Text)
     output_file_key: Mapped[str | None] = mapped_column(String(512))
     match_score: Mapped[float | None] = mapped_column(Float)
+    # Requirements the candidate genuinely does not meet, and a summary of the
+    # edits made. Both drive the results UI, so they are stored, not recomputed.
+    missing_keywords: Mapped[list[str] | None] = mapped_column(JSON)
+    changes: Mapped[list[str] | None] = mapped_column(JSON)
     model: Mapped[str | None] = mapped_column(String(100))
     error: Mapped[str | None] = mapped_column(Text)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

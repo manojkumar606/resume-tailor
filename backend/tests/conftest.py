@@ -27,6 +27,7 @@ from sqlalchemy.pool import StaticPool  # noqa: E402
 from app.core.db import get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base  # noqa: E402
+from app.services.llm import get_llm_provider  # noqa: E402
 
 
 @pytest.fixture
@@ -104,6 +105,49 @@ def docx_bytes():
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
+
+
+DEFAULT_LLM_PAYLOAD = {
+    "tailored_resume": (
+        "Manoj Kumar\n"
+        "EXPERIENCE\n"
+        "- Built reporting pipelines in SQL and Python for analytics teams.\n"
+        "SKILLS\n"
+        "- SQL, Python, dbt, Snowflake\n"
+    ),
+    "match_score": 78,
+    "missing_keywords": ["Snowflake administration"],
+    "changes": ["Surfaced dbt experience in the skills section"],
+}
+
+
+class FakeLLM:
+    """Deterministic stand-in for a real provider.
+
+    Records its calls so tests can assert on what was actually sent to the
+    model, and never touches the network.
+    """
+
+    model_name = "fake-model-1"
+
+    def __init__(self, payload=None, error=None):
+        self.payload = payload if payload is not None else dict(DEFAULT_LLM_PAYLOAD)
+        self.error = error
+        self.calls: list[dict] = []
+
+    def generate_json(self, *, system: str, prompt: str) -> dict:
+        self.calls.append({"system": system, "prompt": prompt})
+        if self.error is not None:
+            raise self.error
+        return self.payload
+
+
+@pytest.fixture
+def fake_llm(client):
+    fake = FakeLLM()
+    app.dependency_overrides[get_llm_provider] = lambda: fake
+    yield fake
+    app.dependency_overrides.pop(get_llm_provider, None)
 
 
 @pytest.fixture
