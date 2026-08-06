@@ -78,13 +78,25 @@ python3 -m venv .venv
 
 ### 4. Frontend
 
-Requires Node 20+.
+Requires Node 20+ (`nvm install 22`).
 
 ```bash
 cd frontend
 npm install
 npm run dev                             # http://localhost:5173
 ```
+
+Run both servers at once, in two terminals. Vite proxies `/api` to
+`127.0.0.1:8000`, so the browser sees a single origin and CORS never applies in
+development — and the client's API base path is the same in dev and production.
+
+### A note on the Gemini model
+
+`GEMINI_MODEL` is set to `gemini-flash-latest`. The pinned `gemini-2.0-flash`
+and `gemini-2.0-flash-lite` return 429 with a free-tier quota of `0` on the
+current key, and `gemini-2.5-flash*` are closed to new users. `-latest` is a
+rolling alias, so the model behind it can change without notice; pin a specific
+version once the key has real quota.
 
 ## Tests
 

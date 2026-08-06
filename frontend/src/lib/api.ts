@@ -1,0 +1,199 @@
+import type {
+  AuthResponse,
+  Job,
+  JobDetail,
+  JobInput,
+  Resume,
+  ResumeDetail,
+  Tailoring,
+  TailoringDetail,
+  User,
+  UUID,
+} from './types'
+
+const BASE = '/api/v1'
+const TOKEN_KEY = 'resume-tailor.token'
+
+export class ApiError extends Error {
+  // Declared explicitly rather than as a constructor parameter property:
+  // tsconfig enables erasableSyntaxOnly, which forbids that shorthand.
+  readonly status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
+export const tokenStore = {
+  get: () => localStorage.getItem(TOKEN_KEY),
+  set: (token: string) => localStorage.setItem(TOKEN_KEY, token),
+  clear: () => localStorage.removeItem(TOKEN_KEY),
+}
+
+// Set by AuthProvider so an expired token anywhere in the app logs the user out
+// once, rather than each caller having to handle 401 itself.
+let unauthorizedHandler: (() => void) | null = null
+export function setUnauthorizedHandler(fn: (() => void) | null) {
+  unauthorizedHandler = fn
+}
+
+/**
+ * FastAPI returns `detail` as a string for HTTPException but as an array of
+ * error objects for 422 validation failures. Flatten both into one message so
+ * the UI never renders "[object Object]".
+ */
+function readDetail(body: unknown): string | null {
+  if (typeof body !== 'object' || body === null) return null
+  const detail = (body as { detail?: unknown }).detail
+
+  if (typeof detail === 'string') return detail
+
+  if (Array.isArray(detail)) {
+    const parts = detail.map((entry) => {
+      const e = entry as { loc?: unknown[]; msg?: string }
+      const field = Array.isArray(e.loc)
+        ? e.loc.filter((p) => p !== 'body').join('.')
+        : ''
+      const msg = e.msg ?? 'is invalid'
+      return field ? `${field}: ${msg}` : msg
+    })
+    return parts.join('; ')
+  }
+
+  return null
+}
+
+async function toApiError(res: Response): Promise<ApiError> {
+  let message = res.statusText || `Request failed (${res.status})`
+  try {
+    message = readDetail(await res.json()) ?? message
+  } catch {
+    // Body was not JSON — keep the status text.
+  }
+  return new ApiError(res.status, message)
+}
+
+async function send(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers)
+
+  const token = tokenStore.get()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+
+  // Let the browser set the multipart boundary for FormData.
+  if (init.body && !(init.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json')
+  }
+
+  const res = await fetch(BASE + path, { ...init, headers })
+
+  if (res.status === 401) {
+    tokenStore.clear()
+    unauthorizedHandler?.()
+    throw new ApiError(401, 'Your session expired. Please sign in again.')
+  }
+  if (!res.ok) throw await toApiError(res)
+
+  return res
+}
+
+async function json<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await send(path, init)
+  if (res.status === 204) return undefined as T
+  return (await res.json()) as T
+}
+
+/** Trigger a browser download for an endpoint that returns a file. */
+async function download(path: string, fallbackName: string): Promise<void> {
+  const res = await send(path)
+
+  const disposition = res.headers.get('Content-Disposition') ?? ''
+  const match = /filename="?([^"]+)"?/.exec(disposition)
+  const filename = match?.[1] ?? fallbackName
+
+  const url = URL.createObjectURL(await res.blob())
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  // Revoking immediately can cancel the download in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 10_000)
+}
+
+export const api = {
+  auth: {
+    signup: (email: string, password: string, fullName?: string) =>
+      json<AuthResponse>('/auth/signup', {
+        method: 'POST',
+        body: JSON.stringify({
+          email,
+          password,
+          full_name: fullName?.trim() || null,
+        }),
+      }),
+
+    login: (email: string, password: string) =>
+      json<AuthResponse>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      }),
+
+    me: () => json<User>('/auth/me'),
+  },
+
+  resumes: {
+    list: () => json<Resume[]>('/resumes'),
+
+    get: (id: UUID) => json<ResumeDetail>(`/resumes/${id}`),
+
+    upload: (file: File, name?: string) => {
+      const form = new FormData()
+      form.append('file', file)
+      if (name?.trim()) form.append('name', name.trim())
+      return json<ResumeDetail>('/resumes', { method: 'POST', body: form })
+    },
+
+    setDefault: (id: UUID) =>
+      json<ResumeDetail>(`/resumes/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ is_default: true }),
+      }),
+
+    remove: (id: UUID) => json<void>(`/resumes/${id}`, { method: 'DELETE' }),
+
+    download: (id: UUID, filename: string) =>
+      download(`/resumes/${id}/download`, filename),
+  },
+
+  jobs: {
+    list: () => json<Job[]>('/jobs'),
+
+    get: (id: UUID) => json<JobDetail>(`/jobs/${id}`),
+
+    create: (input: JobInput) =>
+      json<JobDetail>('/jobs', { method: 'POST', body: JSON.stringify(input) }),
+
+    remove: (id: UUID) => json<void>(`/jobs/${id}`, { method: 'DELETE' }),
+  },
+
+  tailorings: {
+    listForJob: (jobId: UUID) =>
+      json<Tailoring[]>(`/tailorings?job_id=${encodeURIComponent(jobId)}`),
+
+    get: (id: UUID) => json<TailoringDetail>(`/tailorings/${id}`),
+
+    create: (jobId: UUID, resumeId?: UUID) =>
+      json<TailoringDetail>('/tailorings', {
+        method: 'POST',
+        body: JSON.stringify({ job_id: jobId, resume_id: resumeId ?? null }),
+      }),
+
+    remove: (id: UUID) => json<void>(`/tailorings/${id}`, { method: 'DELETE' }),
+
+    download: (id: UUID) =>
+      download(`/tailorings/${id}/download`, 'tailored-resume.docx'),
+  },
+}
