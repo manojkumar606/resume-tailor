@@ -7,10 +7,10 @@ for that specific role — then track the application through to offer or reject
 
 ## Why the server never touches LinkedIn
 
-An earlier prototype (kept in `legacy/`) logged into LinkedIn with a stored
-password and auto-applied. That works for one person and fails as a product:
-it means holding other people's credentials, it breaks LinkedIn's User Agreement
-in a way that gets *users'* accounts banned, and it hits CAPTCHA and IP blocks at
+This project began as a personal script that logged into LinkedIn with a stored
+password and auto-applied. That works for one person and fails as a product: it
+means holding other people's credentials, it breaks LinkedIn's User Agreement in
+a way that gets *users'* accounts banned, and it hits CAPTCHA and IP blocks at
 any real volume.
 
 Instead the user brings the job to the app — pasted description, pasted URL, or
@@ -41,7 +41,11 @@ backend/          FastAPI service
   alembic/        database migrations
   tests/
 frontend/         React SPA
-legacy/           original single-user prototype, reference only
+  src/
+    lib/          typed API client and shared types
+    auth/         session context
+    components/   layout, route guard, UI primitives
+    pages/        login/signup, dashboard, job detail
 ```
 
 ## Setup
