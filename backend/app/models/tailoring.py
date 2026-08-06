@@ -4,7 +4,13 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import JSON, DateTime, Enum, Float, ForeignKey, String, Text, Uuid
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+# JSONB on Postgres, plain JSON everywhere else so the SQLite test suite still
+# works. JSONB stores parsed and can be indexed; there is no reason to prefer
+# JSON on a Postgres deployment.
+JSONVariant = JSON().with_variant(JSONB(), "postgresql")
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
 
@@ -51,8 +57,8 @@ class Tailoring(UUIDMixin, TimestampMixin, Base):
     match_score: Mapped[float | None] = mapped_column(Float)
     # Requirements the candidate genuinely does not meet, and a summary of the
     # edits made. Both drive the results UI, so they are stored, not recomputed.
-    missing_keywords: Mapped[list[str] | None] = mapped_column(JSON)
-    changes: Mapped[list[str] | None] = mapped_column(JSON)
+    missing_keywords: Mapped[list[str] | None] = mapped_column(JSONVariant)
+    changes: Mapped[list[str] | None] = mapped_column(JSONVariant)
     model: Mapped[str | None] = mapped_column(String(100))
     error: Mapped[str | None] = mapped_column(Text)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
