@@ -5,6 +5,12 @@ AI-powered resume tailoring and job application tracker.
 Upload a base resume, paste a job posting, get a version of the resume rewritten
 for that specific role — then track the application through to offer or rejection.
 
+**Live app** — <https://resume-tailor-seven-ecru.vercel.app>
+**API docs** — <https://resume-tailor-api-q27h.onrender.com/docs>
+
+> The API runs on a free Render instance, which sleeps after ~15 minutes idle.
+> The first request after a nap can take up to a minute while it wakes.
+
 ## Why the server never touches LinkedIn
 
 This project began as a personal script that logged into LinkedIn with a stored
