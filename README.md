@@ -112,6 +112,20 @@ Tests run against in-memory SQLite so no database is needed. This keeps the
 suite fast but will not catch Postgres-specific schema issues — those are
 covered by running `alembic upgrade head` against real Postgres.
 
+### Smoke test
+
+The unit suite stubs out the LLM and uses SQLite, so it proves the logic but
+not the deployment. `scripts/smoke.py` drives the real user journey — signup,
+upload, storage round-trip, a live model call, download, and cross-tenant
+isolation — against whatever URL you point it at:
+
+```bash
+backend/.venv/bin/python scripts/smoke.py                                  # local
+backend/.venv/bin/python scripts/smoke.py https://your-api.onrender.com    # deployed
+```
+
+It creates two throwaway accounts and leaves them behind.
+
 ## Deployment
 
 Backend on Render (Docker), frontend on Vercel, database on Neon, files on
