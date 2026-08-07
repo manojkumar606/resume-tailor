@@ -55,8 +55,10 @@ services:
       - key: S3_SECRET_ACCESS_KEY
         sync: false
 
-      # Must be set to the deployed frontend origin once Vercel is live, e.g.
-      # https://resume-tailor.vercel.app — the browser blocks every request
-      # otherwise. Comma-separated for multiple origins.
+      # The deployed frontend origin. Not a secret, so it lives here rather
+      # than in the dashboard — the browser blocks every request without it.
+      # Origin only: scheme and host, no path and no trailing slash, because
+      # this is compared verbatim against the browser's Origin header.
+      # Comma-separated for multiple origins.
       - key: CORS_ORIGINS
-        sync: false
+        value: https://resume-tailor-seven-ecru.vercel.app
