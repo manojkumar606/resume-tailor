@@ -119,6 +119,19 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
             </>
           )}
         </p>
+
+        {/* Layout's footer only renders on authenticated pages, so the credit
+            is repeated here — this is the first screen any visitor sees. */}
+        <p className="mt-8 text-center text-xs text-slate-500 dark:text-slate-400">
+          Built by{' '}
+          <span className="font-semibold text-slate-700 dark:text-slate-200">
+            Manoj
+          </span>{' '}
+          &amp;{' '}
+          <span className="font-semibold text-slate-700 dark:text-slate-200">
+            Pragna
+          </span>
+        </p>
       </div>
     </div>
   )
