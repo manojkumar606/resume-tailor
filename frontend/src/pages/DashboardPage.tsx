@@ -1,7 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { Button, Card, EmptyState, ErrorNote, Field, Input, Spinner, Textarea } from '../components/ui'
+import {
+  Button,
+  Card,
+  CardTitle,
+  EmptyState,
+  ErrorNote,
+  Field,
+  Input,
+  Pill,
+  Spinner,
+  Textarea,
+} from '../components/ui'
 import { api } from '../lib/api'
 import type { Job, Resume } from '../lib/types'
 
@@ -28,24 +39,6 @@ function ResumesPanel({
   const [busy, setBusy] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
 
-  async function handleFile(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    if (!file) return
-
-    setLocalError(null)
-    setBusy(true)
-    try {
-      await api.resumes.upload(file)
-      onChanged()
-    } catch (err) {
-      setLocalError(errorMessage(err))
-    } finally {
-      setBusy(false)
-      // Reset so re-picking the same file still fires a change event.
-      if (fileInput.current) fileInput.current.value = ''
-    }
-  }
-
   async function run(action: () => Promise<unknown>) {
     setLocalError(null)
     setBusy(true)
@@ -59,10 +52,18 @@ function ResumesPanel({
     }
   }
 
+  async function handleFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    await run(() => api.resumes.upload(file))
+    // Reset so re-picking the same file still fires a change event.
+    if (fileInput.current) fileInput.current.value = ''
+  }
+
   return (
     <Card>
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="font-semibold">Resumes</h2>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <CardTitle>Resumes</CardTitle>
         <Button
           variant="secondary"
           loading={busy}
@@ -84,38 +85,39 @@ function ResumesPanel({
       {loading ? (
         <Spinner label="Loading resumes…" />
       ) : resumes.length === 0 ? (
-        <EmptyState>
-          No resumes yet. Upload a .docx or .pdf to get started.
-        </EmptyState>
+        <EmptyState>Upload a .docx or .pdf to get started.</EmptyState>
       ) : (
-        <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+        <ul className="divide-y divide-edge">
           {resumes.map((resume) => (
-            <li key={resume.id} className="flex items-center gap-3 py-3">
+            <li
+              key={resume.id}
+              className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3"
+            >
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{resume.name}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
+                <p className="truncate text-sm font-medium text-ink">{resume.name}</p>
+                <p className="mt-0.5 text-xs text-ink-faint">
                   {new Date(resume.created_at).toLocaleDateString()}
                 </p>
               </div>
 
               {resume.is_default ? (
-                <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
-                  Default
-                </span>
+                <Pill tone="brand">Default</Pill>
               ) : (
                 <Button
-                  variant="secondary"
+                  variant="ghost"
                   disabled={busy}
                   onClick={() => run(() => api.resumes.setDefault(resume.id))}
                 >
-                  Make default
+                  Set default
                 </Button>
               )}
 
               <Button
-                variant="danger"
+                variant="ghost"
                 disabled={busy}
+                aria-label={`Delete ${resume.name}`}
                 onClick={() => run(() => api.resumes.remove(resume.id))}
+                className="text-brand hover:text-brand-hover"
               >
                 Delete
               </Button>
@@ -172,8 +174,8 @@ function JobsPanel({
 
   return (
     <Card>
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="font-semibold">Jobs</h2>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <CardTitle>Jobs</CardTitle>
         <Button variant="secondary" onClick={() => setShowForm((v) => !v)}>
           {showForm ? 'Cancel' : 'Add job'}
         </Button>
@@ -182,7 +184,7 @@ function JobsPanel({
       <ErrorNote>{error ?? localError}</ErrorNote>
 
       {showForm && (
-        <form onSubmit={handleSubmit} className="mb-5 space-y-3">
+        <form onSubmit={handleSubmit} className="mb-5 space-y-3.5">
           <Field label="Job title">
             <Input
               required
@@ -208,7 +210,7 @@ function JobsPanel({
             hint={
               remaining > 0
                 ? `${remaining} more characters needed`
-                : 'Paste the full posting — more detail gives a better rewrite'
+                : 'Paste the whole posting — more detail gives a better rewrite'
             }
           >
             <Textarea
@@ -227,25 +229,25 @@ function JobsPanel({
       {loading ? (
         <Spinner label="Loading jobs…" />
       ) : jobs.length === 0 ? (
-        <EmptyState>No jobs yet. Paste a job description to begin.</EmptyState>
+        <EmptyState>Paste a job description to begin.</EmptyState>
       ) : (
-        <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+        <ul className="divide-y divide-edge">
           {jobs.map((job) => (
-            <li key={job.id} className="py-3">
+            <li key={job.id}>
               <Link
                 to={`/jobs/${job.id}`}
-                className="group flex items-center gap-3"
+                className="group -mx-2 flex min-h-11 items-center gap-3 rounded-lg px-2 py-3 transition-colors hover:bg-raised"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                  <p className="truncate text-sm font-medium text-ink group-hover:text-brand">
                     {job.title}
                   </p>
-                  <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                  <p className="mt-0.5 truncate text-xs text-ink-muted">
                     {job.company}
                     {job.location ? ` · ${job.location}` : ''}
                   </p>
                 </div>
-                <span aria-hidden className="text-slate-400">
+                <span aria-hidden className="text-ink-faint group-hover:text-brand">
                   →
                 </span>
               </Link>
@@ -287,14 +289,14 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+      <header>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">Dashboard</h1>
+        <p className="mt-1 text-sm text-ink-muted">
           Upload a resume, add a job, then open the job to tailor.
         </p>
-      </div>
+      </header>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-5 lg:grid-cols-2 lg:items-start">
         <ResumesPanel
           resumes={resumes}
           loading={loading}

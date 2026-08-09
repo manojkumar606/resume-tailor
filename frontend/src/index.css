@@ -1,17 +1,62 @@
 @import 'tailwindcss';
 
+/* ── Design tokens ─────────────────────────────────────────────────────────
+   One dark theme only — no light mode, so no `dark:` variants anywhere.
+   Palette is deliberately narrow: true black, white, greys, one red.
+   Colour carries meaning here rather than decoration, so red is reserved
+   for actions and for bad news, never used as filler.
+   ────────────────────────────────────────────────────────────────────────── */
+@theme {
+  /* Surfaces, darkest to lightest */
+  --color-canvas: #000000;
+  --color-panel: #0a0a0a;
+  --color-raised: #141414;
+  --color-edge: #242424;
+  --color-edge-strong: #3a3a3a;
+
+  /* Text */
+  --color-ink: #ffffff;
+  --color-ink-muted: #9a9aa2;
+  --color-ink-faint: #66666e;
+
+  /* Single accent */
+  --color-brand: #e5162a;
+  --color-brand-hover: #ff2d40;
+  --color-brand-wash: #1c0508;
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica,
+    Arial, sans-serif;
+}
+
 @layer base {
+  :root {
+    /* Renders native controls (selects, scrollbars, autofill) dark. */
+    color-scheme: dark;
+  }
+
   html {
-    color-scheme: light dark;
+    -webkit-text-size-adjust: 100%;
   }
 
   body {
-    @apply bg-slate-50 text-slate-900 antialiased;
+    @apply bg-canvas text-ink font-sans antialiased;
+    /* Respect notches and home bars on phones. */
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
 
-  @media (prefers-color-scheme: dark) {
-    body {
-      @apply bg-slate-950 text-slate-100;
-    }
+  /* Consistent, visible focus for keyboard users on a dark background. */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-brand;
+  }
+
+  /* Chrome paints a blue-tinted background over autofilled inputs, which
+     looks broken on black. There is no property to disable it, so cover it
+     with a very long inset shadow. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: #ffffff;
+    box-shadow: 0 0 0 1000px #141414 inset;
   }
 }

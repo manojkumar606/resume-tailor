@@ -3,11 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover lets the page paint under a notch, which the
+         safe-area padding in index.css then compensates for. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <!-- Tints the browser chrome on Android and iOS so the app does not sit
+         inside a white bar. -->
+    <meta name="theme-color" content="#000000" />
+    <meta name="color-scheme" content="dark" />
     <meta
       name="description"
       content="Tailor your resume to a specific job posting and track your applications."
     />
+    <!-- Set on the document itself, not just in CSS: the stylesheet loads a
+         moment after first paint, and without this the page flashes white. -->
+    <style>
+      html {
+        background: #000;
+      }
+    </style>
     <title>ResumeTailor</title>
   </head>
   <body>

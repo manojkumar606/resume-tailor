@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
-import { Button, Card, EmptyState, ErrorNote, Spinner } from '../components/ui'
+import {
+  Button,
+  Card,
+  CardTitle,
+  EmptyState,
+  ErrorNote,
+  Pill,
+  Select,
+  Spinner,
+} from '../components/ui'
 import { api } from '../lib/api'
 import type { JobDetail, Resume, Tailoring, TailoringDetail } from '../lib/types'
 
@@ -9,28 +18,40 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Something went wrong.'
 }
 
+/* Only white, grey and red are available, so the score reads as
+   strong / middling / weak rather than the usual green-amber-red. */
 function scoreTone(score: number): string {
-  if (score >= 75) return 'text-emerald-600 dark:text-emerald-400'
-  if (score >= 50) return 'text-amber-600 dark:text-amber-400'
-  return 'text-red-600 dark:text-red-400'
+  if (score >= 75) return 'text-ink'
+  if (score >= 50) return 'text-ink-muted'
+  return 'text-brand'
 }
 
 function MatchScore({ score }: { score: number | null }) {
   if (score === null) {
-    return (
-      <p className="text-sm text-slate-500 dark:text-slate-400">
-        No match score returned.
-      </p>
-    )
+    return <p className="text-sm text-ink-muted">No match score returned.</p>
   }
+
+  const rounded = Math.round(score)
 
   return (
     <div>
-      <p className={`text-4xl font-semibold tabular-nums ${scoreTone(score)}`}>
-        {Math.round(score)}
-        <span className="text-lg font-normal text-slate-400">/100</span>
+      <p className={`text-5xl leading-none font-semibold tabular-nums ${scoreTone(score)}`}>
+        {rounded}
+        <span className="text-lg font-normal text-ink-faint">/100</span>
       </p>
-      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+
+      <div
+        role="img"
+        aria-label={`Match score ${rounded} out of 100`}
+        className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-raised"
+      >
+        <div
+          className={`h-full rounded-full ${score >= 50 ? 'bg-ink' : 'bg-brand'}`}
+          style={{ width: `${rounded}%` }}
+        />
+      </div>
+
+      <p className="mt-3 text-xs text-ink-faint">
         How well your experience fit this role <em>before</em> tailoring.
       </p>
     </div>
@@ -49,60 +70,56 @@ function TailoringResult({
   if (tailoring.status === 'failed') {
     return (
       <Card>
-        <h2 className="mb-2 font-semibold">Tailoring failed</h2>
+        <CardTitle>Tailoring failed</CardTitle>
         <ErrorNote>{tailoring.error ?? 'Unknown error.'}</ErrorNote>
       </Card>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-6 sm:grid-cols-2">
+    <div className="space-y-5">
+      <div className="grid gap-5 sm:grid-cols-2 sm:items-start">
         <Card>
-          <h2 className="mb-3 font-semibold">Match score</h2>
-          <MatchScore score={tailoring.match_score} />
+          <CardTitle>Match score</CardTitle>
+          <div className="mt-4">
+            <MatchScore score={tailoring.match_score} />
+          </div>
         </Card>
 
         <Card>
-          <h2 className="mb-3 font-semibold">Gaps</h2>
-          {tailoring.missing_keywords?.length ? (
-            <>
-              <ul className="flex flex-wrap gap-1.5">
-                {tailoring.missing_keywords.map((keyword) => (
-                  <li
-                    key={keyword}
-                    className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
-                  >
-                    {keyword}
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-                Requirements your resume genuinely does not cover. These were
-                deliberately not invented.
-              </p>
-            </>
-          ) : (
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              No significant gaps identified.
-            </p>
-          )}
+          <CardTitle>Gaps</CardTitle>
+          <div className="mt-4">
+            {tailoring.missing_keywords?.length ? (
+              <>
+                <ul className="flex flex-wrap gap-2">
+                  {tailoring.missing_keywords.map((keyword) => (
+                    <li key={keyword}>
+                      <Pill tone="brand">{keyword}</Pill>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-3 text-xs text-ink-faint">
+                  Requirements your resume genuinely does not cover. These were
+                  deliberately not invented.
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-ink-muted">No significant gaps identified.</p>
+            )}
+          </div>
         </Card>
       </div>
 
       {tailoring.changes?.length ? (
         <Card>
-          <h2 className="mb-3 font-semibold">What changed</h2>
-          <ul className="space-y-2">
+          <CardTitle>What changed</CardTitle>
+          <ul className="mt-4 space-y-2.5">
             {tailoring.changes.map((change) => (
-              <li
-                key={change}
-                className="flex gap-2 text-sm text-slate-700 dark:text-slate-300"
-              >
-                <span aria-hidden className="text-indigo-500">
-                  •
+              <li key={change} className="flex gap-2.5 text-sm text-ink-muted">
+                <span aria-hidden className="text-brand">
+                  —
                 </span>
-                {change}
+                <span>{change}</span>
               </li>
             ))}
           </ul>
@@ -110,20 +127,15 @@ function TailoringResult({
       ) : null}
 
       <Card>
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="font-semibold">Tailored resume</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <CardTitle>Tailored resume</CardTitle>
           <Button onClick={onDownload} loading={downloading}>
             Download .docx
           </Button>
         </div>
-        <pre className="max-h-96 overflow-auto rounded-lg bg-slate-50 p-4 text-xs leading-relaxed whitespace-pre-wrap text-slate-800 dark:bg-slate-950 dark:text-slate-200">
+        <pre className="mt-4 max-h-96 overflow-auto rounded-lg bg-canvas p-4 font-sans text-xs leading-relaxed whitespace-pre-wrap text-ink-muted ring-1 ring-edge">
           {tailoring.tailored_text}
         </pre>
-        {tailoring.model && (
-          <p className="mt-2 text-xs text-slate-400">
-            Generated by {tailoring.model}
-          </p>
-        )}
       </Card>
     </div>
   )
@@ -136,7 +148,7 @@ export function JobPage() {
   const [resumes, setResumes] = useState<Resume[]>([])
   const [history, setHistory] = useState<Tailoring[]>([])
   const [selected, setSelected] = useState<TailoringDetail | null>(null)
-  const [resumeId, setResumeId] = useState<string>('')
+  const [resumeId, setResumeId] = useState('')
 
   const [loading, setLoading] = useState(true)
   const [tailoring, setTailoring] = useState(false)
@@ -175,8 +187,7 @@ export function JobPage() {
     setError(null)
     setTailoring(true)
     try {
-      const result = await api.tailorings.create(jobId, resumeId || undefined)
-      setSelected(result)
+      setSelected(await api.tailorings.create(jobId, resumeId || undefined))
       setHistory(await api.tailorings.listForJob(jobId))
     } catch (err) {
       setError(errorMessage(err))
@@ -209,70 +220,72 @@ export function JobPage() {
     return (
       <div className="space-y-4">
         <ErrorNote>{error ?? 'Job not found.'}</ErrorNote>
-        <Link to="/" className="text-sm text-indigo-600 dark:text-indigo-400">
+        <Link to="/" className="text-sm text-brand hover:underline">
           ← Back to dashboard
         </Link>
       </div>
     )
   }
 
+  const noResumes = resumes.length === 0
+
   return (
-    <div className="space-y-6">
-      <div>
-        <Link
-          to="/"
-          className="text-sm text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
-        >
+    <div className="space-y-5">
+      <header>
+        <Link to="/" className="text-sm text-ink-muted hover:text-ink">
           ← Dashboard
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">{job.title}</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        <h1 className="mt-3 text-2xl font-semibold tracking-tight text-ink">
+          {job.title}
+        </h1>
+        <p className="mt-1 text-sm text-ink-muted">
           {job.company}
           {job.location ? ` · ${job.location}` : ''}
         </p>
-      </div>
+      </header>
 
       <Card>
-        <div className="flex flex-wrap items-end gap-3">
+        {/* Stacks on phones; the select and button sit side by side from sm up. */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <label className="flex-1">
-            <span className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
+            <span className="mb-1.5 block text-sm font-medium text-ink">
               Resume to tailor
             </span>
-            <select
+            <Select
               value={resumeId}
               onChange={(e) => setResumeId(e.target.value)}
-              disabled={resumes.length === 0}
-              className="block w-full rounded-md border-0 bg-white px-3 py-2 text-sm ring-1 ring-slate-300 focus:ring-2 focus:ring-indigo-600 dark:bg-slate-900 dark:ring-slate-700"
+              disabled={noResumes}
             >
-              {resumes.length === 0 && <option value="">No resumes uploaded</option>}
+              {noResumes && <option value="">No resumes uploaded</option>}
               {resumes.map((resume) => (
                 <option key={resume.id} value={resume.id}>
                   {resume.name}
                   {resume.is_default ? ' (default)' : ''}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
 
           <Button
             onClick={handleTailor}
             loading={tailoring}
-            disabled={resumes.length === 0}
+            disabled={noResumes}
+            className="sm:w-auto"
           >
             {selected ? 'Tailor again' : 'Tailor my resume'}
           </Button>
         </div>
 
         {tailoring && (
-          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-            Rewriting against this posting — this usually takes 10–20 seconds.
+          <p className="mt-3 text-sm text-ink-muted">
+            Rewriting against this posting — usually 10 to 20 seconds.
           </p>
         )}
 
-        {resumes.length === 0 && (
-          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+        {noResumes && (
+          <p className="mt-3 text-sm text-ink-muted">
             Upload a resume on the{' '}
-            <Link to="/" className="text-indigo-600 dark:text-indigo-400">
+            <Link to="/" className="text-brand hover:underline">
               dashboard
             </Link>{' '}
             first.
@@ -285,15 +298,15 @@ export function JobPage() {
       <Card>
         <button
           onClick={() => setShowDescription((v) => !v)}
-          className="flex w-full items-center justify-between text-left font-semibold"
+          className="flex min-h-11 w-full items-center justify-between gap-3 text-left"
         >
-          Job description
-          <span aria-hidden className="text-sm font-normal text-slate-400">
+          <CardTitle>Job description</CardTitle>
+          <span aria-hidden className="text-sm font-normal text-ink-faint">
             {showDescription ? 'Hide' : 'Show'}
           </span>
         </button>
         {showDescription && (
-          <p className="mt-3 text-sm leading-relaxed whitespace-pre-wrap text-slate-700 dark:text-slate-300">
+          <p className="mt-4 text-sm leading-relaxed whitespace-pre-wrap text-ink-muted">
             {job.description}
           </p>
         )}
@@ -315,37 +328,33 @@ export function JobPage() {
 
       {history.length > 1 && (
         <Card>
-          <h2 className="mb-3 font-semibold">Previous runs</h2>
-          <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+          <CardTitle>Previous runs</CardTitle>
+          <ul className="mt-3 divide-y divide-edge">
             {history.map((run) => (
-              <li key={run.id} className="flex items-center gap-3 py-2.5">
-                <span className="text-sm text-slate-600 dark:text-slate-400">
+              <li
+                key={run.id}
+                className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3"
+              >
+                <span className="text-sm text-ink-muted">
                   {new Date(run.created_at).toLocaleString()}
                 </span>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    run.status === 'succeeded'
-                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
-                      : 'bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300'
-                  }`}
-                >
+                <Pill tone={run.status === 'succeeded' ? 'quiet' : 'brand'}>
                   {run.status}
-                </span>
+                </Pill>
                 {run.match_score !== null && (
-                  <span className="text-sm tabular-nums text-slate-500">
+                  <span className="text-sm tabular-nums text-ink-faint">
                     {Math.round(run.match_score)}/100
                   </span>
                 )}
-                <div className="ml-auto">
-                  {run.status === 'succeeded' && run.id !== selected?.id && (
-                    <Button
-                      variant="secondary"
-                      onClick={async () => setSelected(await api.tailorings.get(run.id))}
-                    >
-                      View
-                    </Button>
-                  )}
-                </div>
+                {run.status === 'succeeded' && run.id !== selected?.id && (
+                  <Button
+                    variant="ghost"
+                    className="ml-auto"
+                    onClick={async () => setSelected(await api.tailorings.get(run.id))}
+                  >
+                    View
+                  </Button>
+                )}
               </li>
             ))}
           </ul>

@@ -1,12 +1,19 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from 'react'
+import type {
+  ButtonHTMLAttributes,
+  InputHTMLAttributes,
+  ReactNode,
+  SelectHTMLAttributes,
+  TextareaHTMLAttributes,
+} from 'react'
+
+/* Shared primitives. Every colour here comes from a token in index.css, so the
+   palette can change in one place rather than across a hundred class strings. */
 
 const VARIANTS = {
-  primary:
-    'bg-indigo-600 text-white hover:bg-indigo-500 disabled:hover:bg-indigo-600',
-  secondary:
-    'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700',
-  danger:
-    'bg-transparent text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40',
+  primary: 'bg-brand text-white hover:bg-brand-hover',
+  secondary: 'bg-raised text-ink ring-1 ring-edge hover:bg-edge hover:ring-edge-strong',
+  ghost: 'bg-transparent text-ink-muted hover:bg-raised hover:text-ink',
+  danger: 'bg-transparent text-brand ring-1 ring-brand/40 hover:bg-brand-wash',
 } as const
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -26,12 +33,14 @@ export function Button({
     <button
       {...rest}
       disabled={disabled || loading}
-      className={`inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50 ${VARIANTS[variant]} ${className}`}
+      /* min-h-11 keeps every button at ~44px, the minimum comfortable touch
+         target on a phone. */
+      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${VARIANTS[variant]} ${className}`}
     >
       {loading && (
         <span
           aria-hidden
-          className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"
+          className="size-3.5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent"
         />
       )}
       {children}
@@ -39,8 +48,8 @@ export function Button({
   )
 }
 
-const FIELD_CLASSES =
-  'block w-full rounded-md border-0 bg-white px-3 py-2 text-sm text-slate-900 ring-1 ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-600 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-700'
+const FIELD =
+  'block w-full min-h-11 rounded-lg border-0 bg-raised px-3.5 py-2.5 text-base text-ink ring-1 ring-edge transition-shadow placeholder:text-ink-faint focus:ring-2 focus:ring-brand sm:text-sm'
 
 export function Field({
   label,
@@ -48,32 +57,36 @@ export function Field({
   children,
 }: {
   label: string
-  hint?: string
+  hint?: ReactNode
   children: ReactNode
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
-        {label}
-      </span>
+      <span className="mb-1.5 block text-sm font-medium text-ink">{label}</span>
       {children}
-      {hint && (
-        <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
-          {hint}
-        </span>
-      )}
+      {hint && <span className="mt-1.5 block text-xs text-ink-muted">{hint}</span>}
     </label>
   )
 }
 
-export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={`${FIELD_CLASSES} ${props.className ?? ''}`} />
+/* text-base on mobile then sm:text-sm — iOS Safari zooms the whole page when a
+   focused input's font is under 16px, which is jarring mid-form. */
+export function Input({ className = '', ...rest }: InputHTMLAttributes<HTMLInputElement>) {
+  return <input {...rest} className={`${FIELD} ${className}`} />
 }
 
-export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return (
-    <textarea {...props} className={`${FIELD_CLASSES} ${props.className ?? ''}`} />
-  )
+export function Textarea({
+  className = '',
+  ...rest
+}: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea {...rest} className={`${FIELD} resize-y leading-relaxed ${className}`} />
+}
+
+export function Select({
+  className = '',
+  ...rest
+}: SelectHTMLAttributes<HTMLSelectElement>) {
+  return <select {...rest} className={`${FIELD} ${className}`} />
 }
 
 export function Card({
@@ -84,12 +97,16 @@ export function Card({
   className?: string
 }) {
   return (
-    <div
-      className={`rounded-xl bg-white p-5 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800 ${className}`}
+    <section
+      className={`rounded-xl bg-panel p-4 ring-1 ring-edge sm:p-5 ${className}`}
     >
       {children}
-    </div>
+    </section>
   )
+}
+
+export function CardTitle({ children }: { children: ReactNode }) {
+  return <h2 className="text-sm font-semibold tracking-wide text-ink uppercase">{children}</h2>
 }
 
 export function ErrorNote({ children }: { children: ReactNode }) {
@@ -97,7 +114,7 @@ export function ErrorNote({ children }: { children: ReactNode }) {
   return (
     <p
       role="alert"
-      className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300"
+      className="mt-3 rounded-lg bg-brand-wash px-3 py-2.5 text-sm text-brand ring-1 ring-brand/30"
     >
       {children}
     </p>
@@ -106,7 +123,7 @@ export function ErrorNote({ children }: { children: ReactNode }) {
 
 export function Spinner({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+    <div className="flex items-center gap-2.5 py-6 text-sm text-ink-muted">
       <span
         aria-hidden
         className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent"
@@ -118,8 +135,27 @@ export function Spinner({ label }: { label: string }) {
 
 export function EmptyState({ children }: { children: ReactNode }) {
   return (
-    <p className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">
+    <p className="px-2 py-8 text-center text-sm text-ink-muted">{children}</p>
+  )
+}
+
+export function Pill({
+  children,
+  tone = 'neutral',
+}: {
+  children: ReactNode
+  tone?: 'neutral' | 'brand' | 'quiet'
+}) {
+  const tones = {
+    neutral: 'bg-raised text-ink ring-edge',
+    brand: 'bg-brand-wash text-brand ring-brand/30',
+    quiet: 'bg-transparent text-ink-muted ring-edge',
+  } as const
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${tones[tone]}`}
+    >
       {children}
-    </p>
+    </span>
   )
 }

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 
 import { useAuth } from '../auth/AuthContext'
+import { Credit, Wordmark } from '../components/Layout'
 import { Button, Card, ErrorNote, Field, Input } from '../components/ui'
 
 const MIN_PASSWORD_LENGTH = 8
@@ -20,8 +21,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
 
   if (user) return <Navigate to="/" replace />
 
-  const redirectTo =
-    (location.state as { from?: string } | null)?.from ?? '/'
+  const redirectTo = (location.state as { from?: string } | null)?.from ?? '/'
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -34,11 +34,8 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
 
     setBusy(true)
     try {
-      if (isSignup) {
-        await signup(email, password, fullName)
-      } else {
-        await login(email, password)
-      }
+      if (isSignup) await signup(email, password, fullName)
+      else await login(email, password)
       navigate(redirectTo, { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')
@@ -48,16 +45,16 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        <h1 className="mb-1 text-center text-2xl font-semibold tracking-tight">
-          Resume<span className="text-indigo-600 dark:text-indigo-400">Tailor</span>
-        </h1>
-        <p className="mb-6 text-center text-sm text-slate-500 dark:text-slate-400">
-          {isSignup
-            ? 'Create an account to start tailoring.'
-            : 'Sign in to your account.'}
-        </p>
+    <div className="flex min-h-screen flex-col px-4 py-10">
+      <div className="mx-auto flex w-full max-w-sm grow flex-col justify-center">
+        <div className="mb-7 text-center">
+          <Wordmark className="text-2xl" />
+          <p className="mt-2 text-sm text-ink-muted">
+            {isSignup
+              ? 'Rewrite your resume for the job you actually want.'
+              : 'Welcome back.'}
+          </p>
+        </div>
 
         <Card>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -78,6 +75,8 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
+                inputMode="email"
+                autoCapitalize="none"
               />
             </Field>
 
@@ -102,37 +101,20 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
           </form>
         </Card>
 
-        <p className="mt-4 text-center text-sm text-slate-500 dark:text-slate-400">
-          {isSignup ? (
-            <>
-              Already have an account?{' '}
-              <Link to="/login" className="font-medium text-indigo-600 dark:text-indigo-400">
-                Sign in
-              </Link>
-            </>
-          ) : (
-            <>
-              Don't have an account?{' '}
-              <Link to="/signup" className="font-medium text-indigo-600 dark:text-indigo-400">
-                Sign up
-              </Link>
-            </>
-          )}
-        </p>
-
-        {/* Layout's footer only renders on authenticated pages, so the credit
-            is repeated here — this is the first screen any visitor sees. */}
-        <p className="mt-8 text-center text-xs text-slate-500 dark:text-slate-400">
-          Built by{' '}
-          <span className="font-semibold text-slate-700 dark:text-slate-200">
-            Manoj
-          </span>{' '}
-          &amp;{' '}
-          <span className="font-semibold text-slate-700 dark:text-slate-200">
-            Pragna
-          </span>
+        <p className="mt-5 text-center text-sm text-ink-muted">
+          {isSignup ? 'Already have an account? ' : "Don't have an account? "}
+          <Link
+            to={isSignup ? '/login' : '/signup'}
+            className="font-medium text-brand hover:underline"
+          >
+            {isSignup ? 'Sign in' : 'Sign up'}
+          </Link>
         </p>
       </div>
+
+      {/* Layout's footer only wraps authenticated pages, so the credit is
+          repeated here — this is the first screen any visitor sees. */}
+      <Credit className="mt-10 text-center text-xs text-ink-faint" />
     </div>
   )
 }
