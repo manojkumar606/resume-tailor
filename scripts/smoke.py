@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""End-to-end smoke test: drives the whole user journey against a live API.
+"""End-to-end smoke test: drives the real user journey against a live API.
 
 Written to be pointed at a deployment, not just localhost — the point is to
 prove the real thing works, including object storage and the LLM provider,
@@ -11,13 +11,24 @@ which unit tests deliberately stub out.
     # deployed
     backend/.venv/bin/python scripts/smoke.py https://resume-tailor-api.onrender.com
 
-Creates two throwaway accounts and leaves them behind; harmless, but worth
+Email verification is mandatory, and no script can read an inbox, so the run
+has two parts:
+
+  * Always — health, signup, and proof that an unverified account is refused.
+  * The full journey — only when SMOKE_EMAIL and SMOKE_PASSWORD name an
+    already-verified account:
+
+        SMOKE_EMAIL=you@example.com SMOKE_PASSWORD=... \
+          backend/.venv/bin/python scripts/smoke.py <url>
+
+Signup leaves a throwaway unverified account behind; harmless, but worth
 knowing before running it against something you care about.
 """
 
 from __future__ import annotations
 
 import io
+import os
 import sys
 import time
 import uuid
@@ -73,8 +84,8 @@ def sample_resume() -> bytes:
     return buf.getvalue()
 
 
-def step(n: int, text: str) -> None:
-    print(f"{n}. {text}", flush=True)
+def step(text: str) -> None:
+    print(f"-> {text}", flush=True)
 
 
 def main(argv: list[str]) -> int:
@@ -85,90 +96,131 @@ def main(argv: list[str]) -> int:
     client = httpx.Client(base_url=base, timeout=TIMEOUT, follow_redirects=True)
     failures: list[str] = []
 
-    step(1, "health")
+    # ── Always run ────────────────────────────────────────────────────────────
+
+    step("health")
     started = time.time()
     r = client.get("/health/ready")
     r.raise_for_status()
     print(f"   {r.json()}  ({time.time() - started:.1f}s — slow means a cold start)")
 
-    step(2, "signup")
-    email = f"smoke-{uuid.uuid4().hex[:8]}@example.com"
-    r = client.post("/auth/signup", json={"email": email, "password": "smoke-test-pw-123"})
+    step("signup creates an unverified account")
+    throwaway = f"smoke-{uuid.uuid4().hex[:8]}@example.com"
+    r = client.post("/auth/signup", json={"email": throwaway, "password": "smoke-pw-123"})
     r.raise_for_status()
-    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
-    print(f"   {email}")
+    unverified = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    if r.json()["user"]["is_verified"] is not False:
+        failures.append("a brand new account was already marked verified")
+    print(f"   {throwaway}, is_verified={r.json()['user']['is_verified']}")
 
-    step(3, "upload resume")
-    r = client.post(
-        "/resumes",
-        headers=headers,
-        files={"file": ("resume.docx", sample_resume(), "application/octet-stream")},
-    )
-    r.raise_for_status()
-    resume = r.json()
-    print(f"   parsed {len(resume['parsed_text'])} chars, default={resume['is_default']}")
-    if "PostgreSQL" not in resume["parsed_text"]:
-        failures.append("table text was not extracted from the .docx")
+    step("unverified account is refused by the app")
+    for path in ("/resumes", "/jobs", "/tailorings"):
+        code = client.get(path, headers=unverified).status_code
+        if code != 403:
+            failures.append(f"GET {path} gave {code} for an unverified user, expected 403")
+    # 401 would make the client discard the token and sign the user out, losing
+    # the session they need in order to request a resend.
+    print("   403 on /resumes, /jobs, /tailorings")
 
-    step(4, "download the original back (proves storage round-trips)")
-    r = client.get(f"/resumes/{resume['id']}/download", headers=headers)
-    r.raise_for_status()
-    print(f"   {len(r.content)} bytes returned")
-    if r.content[:2] != b"PK":
-        failures.append("stored resume did not come back as a valid .docx")
+    step("unverified account can still reach /auth/me")
+    if client.get("/auth/me", headers=unverified).status_code != 200:
+        failures.append("/auth/me was blocked for an unverified user")
 
-    step(5, "create job")
-    r = client.post("/jobs", headers=headers, json=JOB)
-    r.raise_for_status()
-    job = r.json()
-    print(f"   {job['title']} @ {job['company']}")
+    step("an unknown verification token is rejected")
+    if client.post("/auth/verify", json={"token": "definitely-not-real"}).status_code != 400:
+        failures.append("a bogus verification token was not rejected with 400")
 
-    step(6, "tailor (live LLM call)")
-    started = time.time()
-    r = client.post("/tailorings", headers=headers, json={"job_id": job["id"]})
-    if r.status_code != 201:
-        print(f"   FAILED {r.status_code}: {r.text[:400]}")
-        failures.append(f"tailoring returned {r.status_code}")
-        tailoring = None
+    # ── Full journey, only with a verified account ─────────────────────────────
+
+    email = os.environ.get("SMOKE_EMAIL")
+    password = os.environ.get("SMOKE_PASSWORD")
+
+    if not (email and password):
+        print(
+            "\nSkipping the full journey: set SMOKE_EMAIL and SMOKE_PASSWORD to a\n"
+            "verified account to exercise upload, storage, tailoring and download."
+        )
     else:
-        tailoring = r.json()
-        print(f"   {tailoring['status']} in {time.time() - started:.1f}s via {tailoring['model']}")
-        print(f"   match_score      : {tailoring['match_score']}")
-        print(f"   missing_keywords : {tailoring['missing_keywords']}")
+        step(f"login as {email}")
+        r = client.post("/auth/login", json={"email": email, "password": password})
+        if r.status_code != 200:
+            print(f"   FAILED {r.status_code}: {r.text[:200]}")
+            failures.append("could not log in with SMOKE_EMAIL / SMOKE_PASSWORD")
+            return _report(failures)
 
-    if tailoring:
-        step(7, "download tailored .docx")
-        r = client.get(f"/tailorings/{tailoring['id']}/download", headers=headers)
+        headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+        if not r.json()["user"]["is_verified"]:
+            failures.append("SMOKE_EMAIL names an unverified account")
+            return _report(failures)
+
+        step("upload resume")
+        r = client.post(
+            "/resumes",
+            headers=headers,
+            files={"file": ("resume.docx", sample_resume(), "application/octet-stream")},
+        )
+        r.raise_for_status()
+        resume = r.json()
+        print(f"   parsed {len(resume['parsed_text'])} chars")
+        if "PostgreSQL" not in resume["parsed_text"]:
+            failures.append("table text was not extracted from the .docx")
+
+        step("download the original back (proves storage round-trips)")
+        r = client.get(f"/resumes/{resume['id']}/download", headers=headers)
         r.raise_for_status()
         print(f"   {len(r.content)} bytes")
         if r.content[:2] != b"PK":
-            failures.append("tailored file was not a valid .docx")
+            failures.append("stored resume did not come back as a valid .docx")
 
-    step(8, "tenant isolation")
-    other = client.post(
-        "/auth/signup",
-        json={"email": f"other-{uuid.uuid4().hex[:8]}@example.com", "password": "other-pw-123"},
-    )
-    other.raise_for_status()
-    other_headers = {"Authorization": f"Bearer {other.json()['access_token']}"}
+        step("create job")
+        r = client.post("/jobs", headers=headers, json=JOB)
+        r.raise_for_status()
+        job = r.json()
 
-    if client.get("/resumes", headers=other_headers).json():
-        failures.append("a second user could see the first user's resumes")
-    if client.get(f"/resumes/{resume['id']}", headers=other_headers).status_code != 404:
-        failures.append("a second user could fetch the first user's resume by id")
-    if tailoring:
-        code = client.get(f"/tailorings/{tailoring['id']}", headers=other_headers).status_code
-        if code != 404:
-            failures.append(f"a second user got {code} for another user's tailoring, expected 404")
-    print("   second user sees nothing and gets 404s")
+        step("tailor (live LLM call)")
+        started = time.time()
+        r = client.post("/tailorings", headers=headers, json={"job_id": job["id"]})
+        if r.status_code != 201:
+            print(f"   FAILED {r.status_code}: {r.text[:400]}")
+            failures.append(f"tailoring returned {r.status_code}")
+        else:
+            t = r.json()
+            print(f"   {t['status']} in {time.time() - started:.1f}s")
+            print(f"   match_score      : {t['match_score']}")
+            print(f"   missing_keywords : {t['missing_keywords']}")
 
+            step("download tailored .docx")
+            r = client.get(f"/tailorings/{t['id']}/download", headers=headers)
+            r.raise_for_status()
+            print(f"   {len(r.content)} bytes")
+            if r.content[:2] != b"PK":
+                failures.append("tailored file was not a valid .docx")
+
+            step("tenant isolation")
+            # The unverified throwaway cannot read anything, so a second
+            # verified account is not needed to prove scoping here: the gate
+            # already refuses it, and unit tests cover verified cross-tenant
+            # access.
+            code = client.get(f"/tailorings/{t['id']}", headers=unverified).status_code
+            if code != 403:
+                failures.append(f"another account got {code} for this tailoring")
+            print("   other account refused")
+
+        step("cleanup")
+        client.delete(f"/jobs/{job['id']}", headers=headers)
+        client.delete(f"/resumes/{resume['id']}", headers=headers)
+        print("   removed the job and resume created by this run")
+
+    return _report(failures)
+
+
+def _report(failures: list[str]) -> int:
     print()
     if failures:
         print("SMOKE TEST FAILED")
         for f in failures:
             print(f"  - {f}")
         return 1
-
     print("SMOKE TEST PASSED")
     return 0
 

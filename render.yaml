@@ -35,6 +35,16 @@ services:
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: 10080
 
+      # Email verification is mandatory, so this must be a real provider in
+      # production — with `console`, links are only logged and nobody can
+      # complete signup.
+      - key: EMAIL_PROVIDER
+        value: brevo
+      - key: EMAIL_FROM_NAME
+        value: Resume Tailor
+      - key: FRONTEND_URL
+        value: https://resume-tailor-seven-ecru.vercel.app
+
       - key: LLM_PROVIDER
         value: gemini
       - key: GEMINI_MODEL
@@ -45,6 +55,11 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: GEMINI_API_KEY
+        sync: false
+      # Brevo API key, and the sender address verified in Brevo's dashboard.
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM_ADDRESS
         sync: false
       - key: S3_ENDPOINT_URL
         sync: false

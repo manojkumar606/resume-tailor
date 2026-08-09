@@ -152,6 +152,16 @@ export const api = {
       }),
 
     me: () => json<User>('/auth/me'),
+
+    /** Redeem an emailed verification token. Needs no existing session. */
+    verify: (token: string) =>
+      json<AuthResponse>('/auth/verify', {
+        method: 'POST',
+        body: JSON.stringify({ token }),
+      }),
+
+    resendVerification: () =>
+      json<{ detail: string }>('/auth/resend-verification', { method: 'POST' }),
   },
 
   resumes: {

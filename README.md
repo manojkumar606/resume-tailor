@@ -132,6 +132,44 @@ backend/.venv/bin/python scripts/smoke.py https://your-api.onrender.com    # dep
 
 It creates two throwaway accounts and leaves them behind.
 
+## Email verification
+
+Verification is mandatory: every route outside `/auth` returns **403** until the
+address is confirmed. 403 rather than 401 on purpose — the token is valid and the
+caller is authenticated, they just lack permission. A 401 would make the client
+discard a good token and sign the user out, losing the session they need to
+request a resend.
+
+Tokens are 256 bits of randomness, single-use, and expire after 24 hours. Only a
+SHA-256 hash is stored, so a database leak cannot hand out working links. Plain
+SHA-256 is right here even though passwords need bcrypt: there is no low-entropy
+secret to brute-force, so a slow KDF buys nothing and a fast hash keeps the
+lookup a single indexed query.
+
+Resends are rate limited (default 60s), otherwise the endpoint is an easy way to
+flood somebody's inbox.
+
+Signup sends the email *before* committing. If delivery fails the whole signup is
+rolled back, because an account that never received its link would be permanently
+locked out.
+
+### Providers
+
+`EMAIL_PROVIDER=console` writes the link to the log and sends nothing — the
+default, so development and tests need no mail account:
+
+```
+--- EMAIL (not sent; EMAIL_PROVIDER=console) ---
+To: someone@example.com
+Subject: Confirm your email for Resume Tailor
+...
+http://localhost:5173/verify?token=GPWd42WzNUKO...
+```
+
+`EMAIL_PROVIDER=brevo` delivers for real. Brevo gives 300 emails/day free and
+lets you verify a single sender address without owning a domain, which is why
+it's used here rather than Resend.
+
 ## Deployment
 
 Backend on Render (Docker), frontend on Vercel, database on Neon, files on

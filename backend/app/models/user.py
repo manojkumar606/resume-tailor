@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from app.models.job import Job
     from app.models.resume import Resume
     from app.models.tailoring import Tailoring
+    from app.models.verification import EmailVerificationToken
 
 
 class User(UUIDMixin, TimestampMixin, Base):
@@ -22,6 +23,8 @@ class User(UUIDMixin, TimestampMixin, Base):
     full_name: Mapped[str | None] = mapped_column(String(200))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Gates every route except /auth/*. See api/deps.get_verified_user.
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     resumes: Mapped[list["Resume"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
@@ -33,5 +36,8 @@ class User(UUIDMixin, TimestampMixin, Base):
         back_populates="user", cascade="all, delete-orphan"
     )
     applications: Mapped[list["Application"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    verification_tokens: Mapped[list["EmailVerificationToken"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )

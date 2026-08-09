@@ -34,4 +34,9 @@ class UserRead(BaseModel):
     email: EmailStr
     full_name: str | None
     is_active: bool
+    is_verified: bool
     created_at: datetime
+
+
+class VerifyRequest(BaseModel):
+    token: str = Field(min_length=1, max_length=256)

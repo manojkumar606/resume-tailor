@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import DbSession, VerifiedUser
 from app.models.job import Job
 from app.models.resume import Resume
 from app.models.tailoring import Tailoring, TailoringStatus
@@ -36,7 +36,7 @@ def _get_owned_tailoring(
 @router.post("", response_model=TailoringDetail, status_code=status.HTTP_201_CREATED)
 def create_tailoring(
     payload: TailoringCreate,
-    current_user: CurrentUser,
+    current_user: VerifiedUser,
     db: DbSession,
     provider: Provider,
 ) -> Tailoring:
@@ -132,7 +132,7 @@ def create_tailoring(
 
 @router.get("", response_model=list[TailoringRead])
 def list_tailorings(
-    current_user: CurrentUser,
+    current_user: VerifiedUser,
     db: DbSession,
     job_id: uuid.UUID | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
@@ -147,14 +147,14 @@ def list_tailorings(
 
 @router.get("/{tailoring_id}", response_model=TailoringDetail)
 def get_tailoring(
-    tailoring_id: uuid.UUID, current_user: CurrentUser, db: DbSession
+    tailoring_id: uuid.UUID, current_user: VerifiedUser, db: DbSession
 ) -> Tailoring:
     return _get_owned_tailoring(db, current_user.id, tailoring_id)
 
 
 @router.get("/{tailoring_id}/download")
 def download_tailored_resume(
-    tailoring_id: uuid.UUID, current_user: CurrentUser, db: DbSession
+    tailoring_id: uuid.UUID, current_user: VerifiedUser, db: DbSession
 ) -> Response:
     row = _get_owned_tailoring(db, current_user.id, tailoring_id)
     if row.status is not TailoringStatus.SUCCEEDED or not row.output_file_key:
@@ -183,7 +183,7 @@ def download_tailored_resume(
 
 @router.delete("/{tailoring_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_tailoring(
-    tailoring_id: uuid.UUID, current_user: CurrentUser, db: DbSession
+    tailoring_id: uuid.UUID, current_user: VerifiedUser, db: DbSession
 ) -> Response:
     row = _get_owned_tailoring(db, current_user.id, tailoring_id)
     file_key = row.output_file_key

@@ -24,10 +24,36 @@ from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
+import re  # noqa: E402
+
 from app.core.db import get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base  # noqa: E402
+from app.services.email import get_email_provider  # noqa: E402
 from app.services.llm import get_llm_provider  # noqa: E402
+
+
+class FakeEmailProvider:
+    """Captures messages instead of sending them.
+
+    Tests read the verification link straight out of the captured body, so the
+    real signup → email → confirm flow is exercised end to end without any
+    shortcut that writes is_verified directly.
+    """
+
+    def __init__(self):
+        self.sent: list[dict] = []
+
+    def send(self, *, to: str, subject: str, html: str, text: str) -> None:
+        self.sent.append({"to": to, "subject": subject, "html": html, "text": text})
+
+    def last_token_for(self, email: str) -> str:
+        for message in reversed(self.sent):
+            if message["to"] == email.strip().lower():
+                match = re.search(r"[?&]token=([A-Za-z0-9_\-%]+)", message["text"])
+                if match:
+                    return match.group(1)
+        raise AssertionError(f"no verification email captured for {email}")
 
 
 @pytest.fixture
@@ -47,8 +73,14 @@ def db_session():
 
 
 @pytest.fixture
-def client(db_session):
+def mailbox():
+    return FakeEmailProvider()
+
+
+@pytest.fixture
+def client(db_session, mailbox):
     app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_email_provider] = lambda: mailbox
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
@@ -64,11 +96,11 @@ def user_payload():
 
 
 @pytest.fixture
-def make_user(client):
-    """Create a user and return their Authorization header.
+def make_unverified_user(client):
+    """Sign up without confirming the email address.
 
-    Two distinct users in one test is the setup that catches cross-tenant leaks,
-    so this is a factory rather than a single fixture.
+    Returns the header for an account that can reach /auth routes but nothing
+    else — the state the verification gate is meant to block.
     """
 
     def _make(email: str = "user@example.com", password: str = "a-good-password"):
@@ -76,6 +108,29 @@ def make_user(client):
             "/api/v1/auth/signup", json={"email": email, "password": password}
         )
         assert r.status_code == 201, r.text
+        return {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+    return _make
+
+
+@pytest.fixture
+def make_user(client, mailbox, make_unverified_user):
+    """Create a fully verified user and return their Authorization header.
+
+    Goes through the real flow — signup, read the emailed link, redeem it —
+    rather than setting is_verified directly, so the fixture cannot pass while
+    the actual verification path is broken.
+
+    Two distinct users in one test is the setup that catches cross-tenant leaks,
+    so this is a factory rather than a single fixture.
+    """
+
+    def _make(email: str = "user@example.com", password: str = "a-good-password"):
+        make_unverified_user(email, password)
+        token = mailbox.last_token_for(email)
+        r = client.post("/api/v1/auth/verify", json={"token": token})
+        assert r.status_code == 200, r.text
+        assert r.json()["user"]["is_verified"] is True
         return {"Authorization": f"Bearer {r.json()['access_token']}"}
 
     return _make

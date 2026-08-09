@@ -40,6 +40,24 @@ class Settings(BaseSettings):
     # --- Database ---
     DATABASE_URL: str = ""
 
+    # --- Email ---
+    # console → verification links are logged, nothing is sent. Development
+    #           and tests, so no mail account is required.
+    # brevo   → real delivery via the Brevo HTTP API.
+    EMAIL_PROVIDER: str = "console"
+    BREVO_API_KEY: str = ""
+    EMAIL_FROM_ADDRESS: str = ""
+    EMAIL_FROM_NAME: str = "Resume Tailor"
+
+    # Where verification links point. This is the frontend, not the API: the
+    # user lands on a page which then calls the API with the token.
+    FRONTEND_URL: str = "http://localhost:5173"
+
+    EMAIL_VERIFICATION_TTL_HOURS: int = 24
+    # Minimum gap between resend requests for one account, so the endpoint
+    # cannot be used to flood somebody's inbox.
+    EMAIL_RESEND_COOLDOWN_SECONDS: int = 60
+
     # --- LLM ---
     LLM_PROVIDER: str = "gemini"
     GEMINI_API_KEY: str = ""

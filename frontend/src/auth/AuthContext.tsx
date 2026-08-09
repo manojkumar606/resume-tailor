@@ -17,6 +17,10 @@ interface AuthState {
   initialising: boolean
   login: (email: string, password: string) => Promise<void>
   signup: (email: string, password: string, fullName?: string) => Promise<void>
+  /** Redeem an emailed token and adopt the returned session. */
+  verify: (token: string) => Promise<void>
+  /** Re-read the user, for after verifying in another tab. */
+  refresh: () => Promise<void>
   logout: () => void
 }
 
@@ -79,9 +83,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   )
 
+  const verify = useCallback(async (token: string) => {
+    const res = await api.auth.verify(token)
+    // The response carries a fresh token, so a link opened while signed out
+    // still lands the user straight in the app.
+    tokenStore.set(res.access_token)
+    setUser(res.user)
+  }, [])
+
+  const refresh = useCallback(async () => {
+    setUser(await api.auth.me())
+  }, [])
+
   const value = useMemo(
-    () => ({ user, initialising, login, signup, logout }),
-    [user, initialising, login, signup, logout],
+    () => ({ user, initialising, login, signup, verify, refresh, logout }),
+    [user, initialising, login, signup, verify, refresh, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

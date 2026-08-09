@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import select
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import DbSession, VerifiedUser
 from app.models.job import Job
 from app.schemas.job import JobCreate, JobDetail, JobRead, JobUpdate
 
@@ -18,7 +18,7 @@ def _get_owned_job(db: DbSession, user_id: uuid.UUID, job_id: uuid.UUID) -> Job:
 
 
 @router.post("", response_model=JobDetail, status_code=status.HTTP_201_CREATED)
-def create_job(payload: JobCreate, current_user: CurrentUser, db: DbSession) -> Job:
+def create_job(payload: JobCreate, current_user: VerifiedUser, db: DbSession) -> Job:
     job = Job(user_id=current_user.id, **payload.model_dump())
     db.add(job)
     db.commit()
@@ -28,7 +28,7 @@ def create_job(payload: JobCreate, current_user: CurrentUser, db: DbSession) -> 
 
 @router.get("", response_model=list[JobRead])
 def list_jobs(
-    current_user: CurrentUser,
+    current_user: VerifiedUser,
     db: DbSession,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -45,7 +45,7 @@ def list_jobs(
 
 
 @router.get("/{job_id}", response_model=JobDetail)
-def get_job(job_id: uuid.UUID, current_user: CurrentUser, db: DbSession) -> Job:
+def get_job(job_id: uuid.UUID, current_user: VerifiedUser, db: DbSession) -> Job:
     return _get_owned_job(db, current_user.id, job_id)
 
 
@@ -53,7 +53,7 @@ def get_job(job_id: uuid.UUID, current_user: CurrentUser, db: DbSession) -> Job:
 def update_job(
     job_id: uuid.UUID,
     payload: JobUpdate,
-    current_user: CurrentUser,
+    current_user: VerifiedUser,
     db: DbSession,
 ) -> Job:
     job = _get_owned_job(db, current_user.id, job_id)
@@ -66,7 +66,7 @@ def update_job(
 
 @router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_job(
-    job_id: uuid.UUID, current_user: CurrentUser, db: DbSession
+    job_id: uuid.UUID, current_user: VerifiedUser, db: DbSession
 ) -> Response:
     job = _get_owned_job(db, current_user.id, job_id)
     # Tailorings and applications for this job cascade at the DB level.

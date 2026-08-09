@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile, status
 from sqlalchemy import select, update
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import DbSession, VerifiedUser
 from app.models.resume import Resume
 from app.models.tailoring import Tailoring
 from app.schemas.resume import ResumeDetail, ResumeRead, ResumeUpdate
@@ -37,7 +37,7 @@ def _clear_other_defaults(db: DbSession, user_id: uuid.UUID, keep_id: uuid.UUID)
 
 @router.post("", response_model=ResumeDetail, status_code=status.HTTP_201_CREATED)
 def upload_resume(
-    current_user: CurrentUser,
+    current_user: VerifiedUser,
     db: DbSession,
     file: UploadFile = File(...),
     name: str | None = Form(default=None),
@@ -79,7 +79,7 @@ def upload_resume(
 
 
 @router.get("", response_model=list[ResumeRead])
-def list_resumes(current_user: CurrentUser, db: DbSession) -> list[Resume]:
+def list_resumes(current_user: VerifiedUser, db: DbSession) -> list[Resume]:
     return list(
         db.scalars(
             select(Resume)
@@ -91,7 +91,7 @@ def list_resumes(current_user: CurrentUser, db: DbSession) -> list[Resume]:
 
 @router.get("/{resume_id}", response_model=ResumeDetail)
 def get_resume(
-    resume_id: uuid.UUID, current_user: CurrentUser, db: DbSession
+    resume_id: uuid.UUID, current_user: VerifiedUser, db: DbSession
 ) -> Resume:
     return _get_owned_resume(db, current_user.id, resume_id)
 
@@ -100,7 +100,7 @@ def get_resume(
 def update_resume(
     resume_id: uuid.UUID,
     payload: ResumeUpdate,
-    current_user: CurrentUser,
+    current_user: VerifiedUser,
     db: DbSession,
 ) -> Resume:
     resume = _get_owned_resume(db, current_user.id, resume_id)
@@ -122,7 +122,7 @@ def update_resume(
 
 @router.get("/{resume_id}/download")
 def download_resume(
-    resume_id: uuid.UUID, current_user: CurrentUser, db: DbSession
+    resume_id: uuid.UUID, current_user: VerifiedUser, db: DbSession
 ) -> Response:
     resume = _get_owned_resume(db, current_user.id, resume_id)
     try:
@@ -140,7 +140,7 @@ def download_resume(
 
 @router.delete("/{resume_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_resume(
-    resume_id: uuid.UUID, current_user: CurrentUser, db: DbSession
+    resume_id: uuid.UUID, current_user: VerifiedUser, db: DbSession
 ) -> Response:
     resume = _get_owned_resume(db, current_user.id, resume_id)
 

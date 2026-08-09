@@ -12,6 +12,8 @@ export interface User {
   email: string
   full_name: string | null
   is_active: boolean
+  /** False until the emailed link is redeemed. Gates every route but /auth. */
+  is_verified: boolean
   created_at: string
 }
 
