@@ -5,7 +5,8 @@ from sqlalchemy import select
 from app.main import app
 from app.models.user import User
 from app.models.verification import EmailVerificationToken
-from app.services.email import EmailError, get_email_provider
+from app.api.deps import get_mailer
+from app.services.email import EmailError
 
 SIGNUP = "/api/v1/auth/signup"
 VERIFY = "/api/v1/auth/verify"
@@ -42,16 +43,55 @@ def test_token_is_not_stored_in_plaintext(client, mailbox, db_session):
     assert len(stored[0].token_hash) == 64
 
 
+def test_misconfigured_provider_gives_503_not_a_bare_500(client, monkeypatch):
+    """A missing API key is a server misconfiguration, not a crash.
+
+    Regression test: this surfaced in production as "Internal Server Error",
+    which said nothing about the cause and looked like the app had fallen over.
+    """
+    from app.core import config
+    from app.services import email as email_module
+
+    monkeypatch.setattr(config.settings, "EMAIL_PROVIDER", "brevo")
+    monkeypatch.setattr(config.settings, "BREVO_API_KEY", "")
+    email_module.get_email_provider.cache_clear()
+    # Drop the fixture override so the real resolution path runs.
+    app.dependency_overrides.pop(get_mailer, None)
+    try:
+        r = _signup(client)
+    finally:
+        email_module.get_email_provider.cache_clear()
+
+    assert r.status_code == 503
+    detail = r.json()["detail"]
+    assert "not configured" in detail
+    # The API key name must not leak to the caller.
+    assert "BREVO_API_KEY" not in detail
+
+
+def test_unknown_provider_name_is_also_503(client, monkeypatch):
+    from app.core import config
+    from app.services import email as email_module
+
+    monkeypatch.setattr(config.settings, "EMAIL_PROVIDER", "carrier-pigeon")
+    email_module.get_email_provider.cache_clear()
+    app.dependency_overrides.pop(get_mailer, None)
+    try:
+        assert _signup(client).status_code == 503
+    finally:
+        email_module.get_email_provider.cache_clear()
+
+
 def test_signup_is_rolled_back_when_the_email_cannot_be_sent(client, db_session):
     class BrokenMailer:
         def send(self, **_):
             raise EmailError("smtp exploded")
 
-    app.dependency_overrides[get_email_provider] = lambda: BrokenMailer()
+    app.dependency_overrides[get_mailer] = lambda: BrokenMailer()
     try:
         r = _signup(client)
     finally:
-        app.dependency_overrides.pop(get_email_provider, None)
+        app.dependency_overrides.pop(get_mailer, None)
 
     assert r.status_code == 502
     # Verification is mandatory, so a user whose email never arrived would be

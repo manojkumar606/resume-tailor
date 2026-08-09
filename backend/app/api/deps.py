@@ -5,6 +5,7 @@ Every protected route depends on it, and every query filters by the returned
 user's id — that is what makes the app multi-tenant.
 """
 
+import logging
 import uuid
 from typing import Annotated
 
@@ -15,6 +16,9 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.security import decode_access_token
 from app.models.user import User
+from app.services.email import EmailError, EmailProvider, get_email_provider
+
+logger = logging.getLogger(__name__)
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -71,3 +75,30 @@ def get_verified_user(current_user: CurrentUser) -> User:
 
 
 VerifiedUser = Annotated[User, Depends(get_verified_user)]
+
+
+def get_mailer() -> EmailProvider:
+    """Resolve the email provider, turning a bad configuration into a clear 503.
+
+    get_email_provider raises when the provider cannot be built at all — missing
+    API key, unknown provider name. Letting that escape produces a bare
+    "Internal Server Error", which looks like a crash and tells nobody anything;
+    this happened in production when the Brevo key was absent. The detail stays
+    generic on the wire and the real cause goes to the log, where it belongs.
+
+    This is the dependency routes declare, so it is also the seam tests override.
+    """
+    try:
+        return get_email_provider()
+    except EmailError as exc:
+        logger.error("Email provider is misconfigured: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Email delivery is not configured on the server, so accounts "
+                "cannot be created right now. Please try again later."
+            ),
+        ) from exc
+
+
+Mailer = Annotated[EmailProvider, Depends(get_mailer)]

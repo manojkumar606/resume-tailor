@@ -29,7 +29,7 @@ import re  # noqa: E402
 from app.core.db import get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base  # noqa: E402
-from app.services.email import get_email_provider  # noqa: E402
+from app.api.deps import get_mailer  # noqa: E402
 from app.services.llm import get_llm_provider  # noqa: E402
 
 
@@ -80,7 +80,7 @@ def mailbox():
 @pytest.fixture
 def client(db_session, mailbox):
     app.dependency_overrides[get_db] = lambda: db_session
-    app.dependency_overrides[get_email_provider] = lambda: mailbox
+    app.dependency_overrides[get_mailer] = lambda: mailbox
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

@@ -1,14 +1,12 @@
-from typing import Annotated
-
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentUser, DbSession, Mailer
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.user import User
 from app.schemas.token import AuthResponse
 from app.schemas.user import UserCreate, UserLogin, UserRead, VerifyRequest
-from app.services.email import EmailError, EmailProvider, get_email_provider
+from app.services.email import EmailError
 from app.services.verification import (
     ResendTooSoon,
     VerificationError,
@@ -19,8 +17,6 @@ from app.services.verification import (
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-Mailer = Annotated[EmailProvider, Depends(get_email_provider)]
 
 
 def _normalize_email(email: str) -> str:

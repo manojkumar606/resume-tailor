@@ -24,6 +24,16 @@ const BASE = `${API_ORIGIN}/api/v1`
 
 const TOKEN_KEY = 'resume-tailor.token'
 
+/**
+ * fetch() has no default timeout: if the API is unreachable the promise simply
+ * never settles, and a submit button spins forever with no error. Observed for
+ * real when the backend was down.
+ *
+ * Tailoring genuinely takes 10-20s, and a sleeping free-tier instance can take
+ * a minute to wake, so the ceiling has to be generous rather than snappy.
+ */
+const REQUEST_TIMEOUT_MS = 120_000
+
 export class ApiError extends Error {
   // Declared explicitly rather than as a constructor parameter property:
   // tsconfig enables erasableSyntaxOnly, which forbids that shorthand.
@@ -96,7 +106,26 @@ async function send(path: string, init: RequestInit = {}): Promise<Response> {
     headers.set('Content-Type', 'application/json')
   }
 
-  const res = await fetch(BASE + path, { ...init, headers })
+  let res: Response
+  try {
+    res = await fetch(BASE + path, {
+      ...init,
+      headers,
+      signal: init.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+  } catch (err) {
+    // A network-level failure, not an HTTP error: server unreachable, DNS
+    // failure, CORS rejection, or our own timeout firing. Translate it into an
+    // ApiError so callers have one error type to handle and the UI can say
+    // something useful instead of hanging.
+    const timedOut = err instanceof DOMException && err.name === 'TimeoutError'
+    throw new ApiError(
+      0,
+      timedOut
+        ? 'The server took too long to respond. Please try again.'
+        : 'Could not reach the server. Check your connection and try again.',
+    )
+  }
 
   if (res.status === 401) {
     tokenStore.clear()
