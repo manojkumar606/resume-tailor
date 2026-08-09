@@ -20,7 +20,7 @@ os.environ.setdefault(
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy import create_engine, select  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
@@ -47,13 +47,13 @@ class FakeEmailProvider:
     def send(self, *, to: str, subject: str, html: str, text: str) -> None:
         self.sent.append({"to": to, "subject": subject, "html": html, "text": text})
 
-    def last_token_for(self, email: str) -> str:
+    def last_code_for(self, email: str) -> str:
         for message in reversed(self.sent):
             if message["to"] == email.strip().lower():
-                match = re.search(r"[?&]token=([A-Za-z0-9_\-%]+)", message["text"])
+                match = re.search(r"\b(\d{6})\b", message["text"])
                 if match:
                     return match.group(1)
-        raise AssertionError(f"no verification email captured for {email}")
+        raise AssertionError(f"no code email captured for {email}")
 
 
 @pytest.fixture
@@ -96,44 +96,74 @@ def user_payload():
 
 
 @pytest.fixture
-def make_unverified_user(client):
-    """Sign up without confirming the email address.
+def make_user(client, mailbox):
+    """Create a user and return their Authorization header.
 
-    Returns the header for an account that can reach /auth routes but nothing
-    else — the state the verification gate is meant to block.
-    """
-
-    def _make(email: str = "user@example.com", password: str = "a-good-password"):
-        r = client.post(
-            "/api/v1/auth/signup", json={"email": email, "password": password}
-        )
-        assert r.status_code == 201, r.text
-        return {"Authorization": f"Bearer {r.json()['access_token']}"}
-
-    return _make
-
-
-@pytest.fixture
-def make_user(client, mailbox, make_unverified_user):
-    """Create a fully verified user and return their Authorization header.
-
-    Goes through the real flow — signup, read the emailed link, redeem it —
-    rather than setting is_verified directly, so the fixture cannot pass while
-    the actual verification path is broken.
+    Goes through the real two-step flow — sign up, read the emailed code, submit
+    it — rather than writing is_verified directly, so the fixture cannot pass
+    while the actual code path is broken.
 
     Two distinct users in one test is the setup that catches cross-tenant leaks,
     so this is a factory rather than a single fixture.
     """
 
     def _make(email: str = "user@example.com", password: str = "a-good-password"):
-        make_unverified_user(email, password)
-        token = mailbox.last_token_for(email)
-        r = client.post("/api/v1/auth/verify", json={"token": token})
+        r = client.post(
+            "/api/v1/auth/signup", json={"email": email, "password": password}
+        )
+        assert r.status_code == 202, r.text
+
+        r = client.post(
+            "/api/v1/auth/verify-code",
+            json={"email": email, "code": mailbox.last_code_for(email)},
+        )
         assert r.status_code == 200, r.text
         assert r.json()["user"]["is_verified"] is True
         return {"Authorization": f"Bearer {r.json()['access_token']}"}
 
     return _make
+
+
+@pytest.fixture
+def sign_in(client, mailbox):
+    """Log an existing user in through both steps, returning fresh headers."""
+
+    def _sign_in(email: str, password: str = "a-good-password"):
+        r = client.post(
+            "/api/v1/auth/login", json={"email": email, "password": password}
+        )
+        assert r.status_code == 202, r.text
+
+        r = client.post(
+            "/api/v1/auth/verify-code",
+            json={"email": email, "code": mailbox.last_code_for(email)},
+        )
+        assert r.status_code == 200, r.text
+        return {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+    return _sign_in
+
+
+@pytest.fixture
+def unverify(db_session):
+    """Force an account back to unverified while keeping its token valid.
+
+    A token can now only be obtained by consuming a code, so the verification
+    gate is unreachable through the API. It is kept as defence in depth, which
+    means testing it requires building the state directly.
+    """
+
+    def _unverify(email: str):
+        from app.models.user import User
+
+        user = db_session.scalar(
+            select(User).where(User.email == email.strip().lower())
+        )
+        assert user is not None, f"no such user: {email}"
+        user.is_verified = False
+        db_session.commit()
+
+    return _unverify
 
 
 @pytest.fixture

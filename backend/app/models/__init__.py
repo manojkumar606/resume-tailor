@@ -10,13 +10,14 @@ from app.models.job import Job, JobSource
 from app.models.resume import Resume
 from app.models.tailoring import Tailoring, TailoringStatus
 from app.models.user import User
-from app.models.verification import EmailVerificationToken
+from app.models.verification import CodePurpose, EmailCode
 
 __all__ = [
     "Application",
     "ApplicationStatus",
     "Base",
-    "EmailVerificationToken",
+    "CodePurpose",
+    "EmailCode",
     "Job",
     "JobSource",
     "Resume",

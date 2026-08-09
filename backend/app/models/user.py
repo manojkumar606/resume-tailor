@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from app.models.job import Job
     from app.models.resume import Resume
     from app.models.tailoring import Tailoring
-    from app.models.verification import EmailVerificationToken
+    from app.models.verification import EmailCode
 
 
 class User(UUIDMixin, TimestampMixin, Base):
@@ -38,6 +38,6 @@ class User(UUIDMixin, TimestampMixin, Base):
     applications: Mapped[list["Application"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
-    verification_tokens: Mapped[list["EmailVerificationToken"]] = relationship(
+    email_codes: Mapped[list["EmailCode"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )

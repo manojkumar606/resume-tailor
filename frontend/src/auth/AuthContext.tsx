@@ -9,17 +9,26 @@ import {
 } from 'react'
 
 import { api, setUnauthorizedHandler, tokenStore } from '../lib/api'
-import type { User } from '../lib/types'
+import type { CodeSent, User } from '../lib/types'
 
 interface AuthState {
   user: User | null
   /** True until the stored token has been checked, so routes don't flash. */
   initialising: boolean
-  login: (email: string, password: string) => Promise<void>
-  signup: (email: string, password: string, fullName?: string) => Promise<void>
-  /** Redeem an emailed token and adopt the returned session. */
-  verify: (token: string) => Promise<void>
-  /** Re-read the user, for after verifying in another tab. */
+
+  /* Step one. Neither of these produces a session — both send a code. */
+  requestSignup: (
+    email: string,
+    password: string,
+    fullName?: string,
+  ) => Promise<CodeSent>
+  requestLogin: (email: string, password: string) => Promise<CodeSent>
+
+  /** Step two, and the only thing that establishes a session. */
+  submitCode: (email: string, code: string) => Promise<void>
+  resendCode: (email: string) => Promise<string>
+
+  /** Re-read the current user. */
   refresh: () => Promise<void>
   logout: () => void
 }
@@ -68,27 +77,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const login = useCallback(async (email: string, password: string) => {
-    const res = await api.auth.login(email, password)
+  const requestSignup = useCallback(
+    (email: string, password: string, fullName?: string) =>
+      api.auth.signup(email, password, fullName),
+    [],
+  )
+
+  const requestLogin = useCallback(
+    (email: string, password: string) => api.auth.login(email, password),
+    [],
+  )
+
+  const submitCode = useCallback(async (email: string, code: string) => {
+    const res = await api.auth.verifyCode(email, code)
     tokenStore.set(res.access_token)
     setUser(res.user)
   }, [])
 
-  const signup = useCallback(
-    async (email: string, password: string, fullName?: string) => {
-      const res = await api.auth.signup(email, password, fullName)
-      tokenStore.set(res.access_token)
-      setUser(res.user)
-    },
-    [],
-  )
-
-  const verify = useCallback(async (token: string) => {
-    const res = await api.auth.verify(token)
-    // The response carries a fresh token, so a link opened while signed out
-    // still lands the user straight in the app.
-    tokenStore.set(res.access_token)
-    setUser(res.user)
+  const resendCode = useCallback(async (email: string) => {
+    const res = await api.auth.resendCode(email)
+    return res.detail
   }, [])
 
   const refresh = useCallback(async () => {
@@ -96,8 +104,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo(
-    () => ({ user, initialising, login, signup, verify, refresh, logout }),
-    [user, initialising, login, signup, verify, refresh, logout],
+    () => ({
+      user,
+      initialising,
+      requestSignup,
+      requestLogin,
+      submitCode,
+      resendCode,
+      refresh,
+      logout,
+    }),
+    [
+      user,
+      initialising,
+      requestSignup,
+      requestLogin,
+      submitCode,
+      resendCode,
+      refresh,
+      logout,
+    ],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

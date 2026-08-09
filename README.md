@@ -120,55 +120,79 @@ covered by running `alembic upgrade head` against real Postgres.
 
 ### Smoke test
 
-The unit suite stubs out the LLM and uses SQLite, so it proves the logic but
-not the deployment. `scripts/smoke.py` drives the real user journey — signup,
-upload, storage round-trip, a live model call, download, and cross-tenant
-isolation — against whatever URL you point it at:
+The unit suite stubs out the LLM and uses SQLite, so it proves the logic but not
+the deployment. `scripts/smoke.py` exercises the real thing:
 
 ```bash
 backend/.venv/bin/python scripts/smoke.py                                  # local
 backend/.venv/bin/python scripts/smoke.py https://your-api.onrender.com    # deployed
 ```
 
-It creates two throwaway accounts and leaves them behind.
+It always checks health and the auth surface — signup issues no token, a wrong
+password is refused, bad codes are rejected, resend does not reveal whether an
+address exists.
 
-## Email verification
+Signing in requires a code emailed at that moment, and no script can read an
+inbox, so the rest — upload, storage round-trip, a live model call, download —
+runs only with a token. Sign in through the browser and copy it from devtools:
 
-Verification is mandatory: every route outside `/auth` returns **403** until the
-address is confirmed. 403 rather than 401 on purpose — the token is valid and the
-caller is authenticated, they just lack permission. A 401 would make the client
-discard a good token and sign the user out, losing the session they need to
-request a resend.
+```bash
+# in the browser console: localStorage.getItem('resume-tailor.token')
+SMOKE_TOKEN=eyJhbGci... backend/.venv/bin/python scripts/smoke.py <url>
+```
 
-Tokens are 256 bits of randomness, single-use, and expire after 24 hours. Only a
-SHA-256 hash is stored, so a database leak cannot hand out working links. Plain
-SHA-256 is right here even though passwords need bcrypt: there is no low-entropy
-secret to brute-force, so a slow KDF buys nothing and a fast hash keeps the
-lookup a single indexed query.
+It leaves one throwaway account behind per run.
 
-Resends are rate limited (default 60s), otherwise the endpoint is an easy way to
-flood somebody's inbox.
+## Sign-in: password plus an emailed code
 
-Signup sends the email *before* committing. If delivery fails the whole signup is
-rolled back, because an account that never received its link would be permanently
-locked out.
+Every sign-in needs both a password and a six-digit code emailed at that moment.
+Signup works the same way, so the address is proven before the account is usable.
+
+`/auth/signup` and `/auth/login` return **202** and no token. `/auth/verify-code`
+is the only endpoint that mints one — a leaked password is therefore not enough
+to get in without also holding the mailbox.
+
+Because of that, a bearer token already implies a confirmed address, so the
+client needs no separate "verified" state and there is no holding page. The
+backend still refuses unverified accounts with 403 as defence in depth; it is
+unreachable through the API, and the test for it builds the state directly.
+
+Codes are stored as an **HMAC keyed with `SECRET_KEY`**, not a bare hash. Six
+digits is only a million possibilities, so `sha256(code)` would fall to an
+offline sweep the moment the table leaked; without the key the digest is useless.
+The user id is mixed in too, so one user's stored digest cannot be matched
+against another's code.
+
+Guessing is cheap against six digits, so the defences are layered:
+
+- 10 minute expiry
+- single use
+- retired after 5 wrong attempts rather than surviving to expiry
+- issuing a new code retires any outstanding one
+- resend is rate limited, and answers identically whether or not the address
+  exists, so it cannot enumerate accounts
+- a wrong password sends no email at all, so the endpoint cannot be used to
+  spam an inbox using only somebody's address
+
+Codes are emailed, and mail from a Gmail address via Brevo has weak DMARC
+alignment, so a message can land in spam. With a code required at every login
+that means a locked-out user, not just a delayed signup. The UI says to check
+spam and offers resend. The standard remedy if it becomes a real problem is
+remembering a device for 30 days so codes are only needed on new ones.
 
 ### Providers
 
-`EMAIL_PROVIDER=console` writes the link to the log and sends nothing — the
+`EMAIL_PROVIDER=console` writes the code to the log and sends nothing — the
 default, so development and tests need no mail account:
 
 ```
 --- EMAIL (not sent; EMAIL_PROVIDER=console) ---
 To: someone@example.com
-Subject: Confirm your email for Resume Tailor
-...
-http://localhost:5173/verify?token=GPWd42WzNUKO...
+Subject: 429173 is your Resume Tailor code
 ```
 
 `EMAIL_PROVIDER=brevo` delivers for real. Brevo gives 300 emails/day free and
-lets you verify a single sender address without owning a domain, which is why
-it's used here rather than Resend.
+allows a single verified sender address without owning a domain.
 
 ## Deployment
 

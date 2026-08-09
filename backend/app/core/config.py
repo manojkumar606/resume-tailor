@@ -53,7 +53,12 @@ class Settings(BaseSettings):
     # user lands on a page which then calls the API with the token.
     FRONTEND_URL: str = "http://localhost:5173"
 
-    EMAIL_VERIFICATION_TTL_HOURS: int = 24
+    # Codes are typed in immediately, so they need minutes rather than hours.
+    # A short window is also the main defence against guessing.
+    LOGIN_CODE_TTL_MINUTES: int = 10
+    # Six digits is a million possibilities — fine with a short expiry and a
+    # hard attempt cap, hopeless without them.
+    LOGIN_CODE_MAX_ATTEMPTS: int = 5
     # Minimum gap between resend requests for one account, so the endpoint
     # cannot be used to flood somebody's inbox.
     EMAIL_RESEND_COOLDOWN_SECONDS: int = 60

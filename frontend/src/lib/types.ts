@@ -23,6 +23,17 @@ export interface AuthResponse {
   user: User
 }
 
+/**
+ * What signup and login return instead of a token. Neither step grants access on
+ * its own — the emailed code has to be submitted first.
+ */
+export interface CodeSent {
+  status: string
+  email: string
+  expires_in_minutes: number
+  detail: string
+}
+
 export interface Resume {
   id: UUID
   name: string

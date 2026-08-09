@@ -1,5 +1,6 @@
 import type {
   AuthResponse,
+  CodeSent,
   Job,
   JobDetail,
   JobInput,
@@ -66,10 +67,26 @@ export function setUnauthorizedHandler(fn: (() => void) | null) {
  * expired session: it wipes the stored token and reports "your session
  * expired" to someone who never had one.
  */
-const CREDENTIAL_ENDPOINTS = ['/auth/login', '/auth/signup', '/auth/verify']
+const CREDENTIAL_ENDPOINTS = [
+  '/auth/login',
+  '/auth/signup',
+  '/auth/verify-code',
+  '/auth/resend-code',
+]
 
 function isCredentialEndpoint(path: string): boolean {
   return CREDENTIAL_ENDPOINTS.some((endpoint) => path.startsWith(endpoint))
+}
+
+/**
+ * The backend refuses unverified accounts with 403. That state is unreachable
+ * through the normal flow now — a token can only be obtained by submitting a
+ * code — but the gate remains as defence in depth. If it ever fires, ending the
+ * session is the right recovery: signing in again sends a fresh code, which
+ * re-verifies the address.
+ */
+function isVerificationRefusal(status: number, message: string): boolean {
+  return status === 403 && message.toLowerCase().includes('confirm your email')
 }
 
 /**
@@ -145,7 +162,16 @@ async function send(path: string, init: RequestInit = {}): Promise<Response> {
     unauthorizedHandler?.()
     throw new ApiError(401, 'Your session expired. Please sign in again.')
   }
-  if (!res.ok) throw await toApiError(res)
+
+  if (!res.ok) {
+    const error = await toApiError(res)
+    if (isVerificationRefusal(error.status, error.message)) {
+      tokenStore.clear()
+      unauthorizedHandler?.()
+      throw new ApiError(403, 'Please sign in again to confirm your email address.')
+    }
+    throw error
+  }
 
   return res
 }
@@ -177,8 +203,9 @@ async function download(path: string, fallbackName: string): Promise<void> {
 
 export const api = {
   auth: {
+    /** Creates the account and emails a code. Returns no token. */
     signup: (email: string, password: string, fullName?: string) =>
-      json<AuthResponse>('/auth/signup', {
+      json<CodeSent>('/auth/signup', {
         method: 'POST',
         body: JSON.stringify({
           email,
@@ -187,23 +214,27 @@ export const api = {
         }),
       }),
 
+    /** Checks the password and emails a code. Returns no token. */
     login: (email: string, password: string) =>
-      json<AuthResponse>('/auth/login', {
+      json<CodeSent>('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       }),
 
-    me: () => json<User>('/auth/me'),
-
-    /** Redeem an emailed verification token. Needs no existing session. */
-    verify: (token: string) =>
-      json<AuthResponse>('/auth/verify', {
+    /** The only call that yields a session. */
+    verifyCode: (email: string, code: string) =>
+      json<AuthResponse>('/auth/verify-code', {
         method: 'POST',
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({ email, code }),
       }),
 
-    resendVerification: () =>
-      json<{ detail: string }>('/auth/resend-verification', { method: 'POST' }),
+    resendCode: (email: string) =>
+      json<{ detail: string }>('/auth/resend-code', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      }),
+
+    me: () => json<User>('/auth/me'),
   },
 
   resumes: {
