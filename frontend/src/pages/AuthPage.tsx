@@ -1,11 +1,69 @@
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 
 import { useAuth } from '../auth/AuthContext'
 import { Credit, Wordmark } from '../components/Layout'
 import { Button, Card, ErrorNote, Field, Input } from '../components/ui'
+import { ApiError } from '../lib/api'
 
 const MIN_PASSWORD_LENGTH = 8
+
+const INLINE_LINK = 'font-medium underline underline-offset-2 hover:no-underline'
+
+/**
+ * Turn a failed request into something a person can act on.
+ *
+ * The 401 wording is deliberately ambiguous about *which* detail was wrong.
+ * Saying "no such account" would turn this form into a way to check whether a
+ * given person has signed up — and on a resume-tailoring site, that discloses
+ * that someone is job hunting. The backend returns an identical 401 for an
+ * unknown email and a wrong password for the same reason, so the UI must not
+ * undo it.
+ */
+function authErrorMessage(err: unknown): ReactNode {
+  if (!(err instanceof ApiError)) {
+    return err instanceof Error
+      ? err.message
+      : 'Something went wrong. Please try again.'
+  }
+
+  switch (err.status) {
+    case 401:
+      return (
+        <>
+          Incorrect email or password. Check both, or{' '}
+          <Link to="/signup" className={INLINE_LINK}>
+            create an account
+          </Link>{' '}
+          if you don't have one yet.
+        </>
+      )
+
+    case 409:
+      return (
+        <>
+          An account with that email already exists.{' '}
+          <Link to="/login" className={INLINE_LINK}>
+            Sign in instead
+          </Link>
+          .
+        </>
+      )
+
+    case 403:
+      return 'That account has been disabled. Please get in touch if you think this is a mistake.'
+
+    case 422:
+      // Pydantic's field-level messages, already flattened by the API client.
+      return err.message
+
+    case 503:
+      return 'Sign-ups are briefly unavailable because confirmation emails cannot be sent right now. Please try again in a few minutes.'
+
+    default:
+      return err.message
+  }
+}
 
 export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const isSignup = mode === 'signup'
@@ -16,7 +74,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<ReactNode>(null)
   const [busy, setBusy] = useState(false)
 
   if (user) return <Navigate to="/" replace />
@@ -38,7 +96,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
       else await login(email, password)
       navigate(redirectTo, { replace: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.')
+      setError(authErrorMessage(err))
     } finally {
       setBusy(false)
     }

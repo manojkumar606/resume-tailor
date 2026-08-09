@@ -60,6 +60,19 @@ export function setUnauthorizedHandler(fn: (() => void) | null) {
 }
 
 /**
+ * Endpoints where a 401 means "those details are wrong", not "your token died".
+ *
+ * Without this distinction the global handler treats a failed login as an
+ * expired session: it wipes the stored token and reports "your session
+ * expired" to someone who never had one.
+ */
+const CREDENTIAL_ENDPOINTS = ['/auth/login', '/auth/signup', '/auth/verify']
+
+function isCredentialEndpoint(path: string): boolean {
+  return CREDENTIAL_ENDPOINTS.some((endpoint) => path.startsWith(endpoint))
+}
+
+/**
  * FastAPI returns `detail` as a string for HTTPException but as an array of
  * error objects for 422 validation failures. Flatten both into one message so
  * the UI never renders "[object Object]".
@@ -127,7 +140,7 @@ async function send(path: string, init: RequestInit = {}): Promise<Response> {
     )
   }
 
-  if (res.status === 401) {
+  if (res.status === 401 && !isCredentialEndpoint(path)) {
     tokenStore.clear()
     unauthorizedHandler?.()
     throw new ApiError(401, 'Your session expired. Please sign in again.')
