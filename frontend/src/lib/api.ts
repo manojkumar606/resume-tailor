@@ -128,7 +128,11 @@ async function toApiError(res: Response): Promise<ApiError> {
 async function send(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers)
 
-  const token = tokenStore.get()
+  // Credential endpoints are never sent a bearer token. A sign-in attempt has
+  // no business carrying a stale session, and it means a 401 from one of them
+  // provably cannot be an expired token.
+  const credential = isCredentialEndpoint(path)
+  const token = credential ? null : tokenStore.get()
   if (token) headers.set('Authorization', `Bearer ${token}`)
 
   // Let the browser set the multipart boundary for FormData.
@@ -157,7 +161,11 @@ async function send(path: string, init: RequestInit = {}): Promise<Response> {
     )
   }
 
-  if (res.status === 401 && !isCredentialEndpoint(path)) {
+  // "Expired session" requires that a session was actually presented. Keyed on
+  // whether a token went out rather than on the path alone, so an endpoint
+  // missing from CREDENTIAL_ENDPOINTS still cannot produce a nonsensical
+  // "your session expired" for someone who never had one.
+  if (res.status === 401 && token) {
     tokenStore.clear()
     unauthorizedHandler?.()
     throw new ApiError(401, 'Your session expired. Please sign in again.')
