@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     # cannot be used to flood somebody's inbox.
     EMAIL_RESEND_COOLDOWN_SECONDS: int = 60
 
+    # --- Application tracking ---
+    # An application sitting in Applied with no movement for this long is
+    # flagged. Defined once here because the reminder job will use the same rule.
+    STALE_APPLICATION_DAYS: int = 14
+
     # --- LLM ---
     LLM_PROVIDER: str = "gemini"
     GEMINI_API_KEY: str = ""

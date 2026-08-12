@@ -1,8 +1,9 @@
 import enum
 import uuid
+from datetime import date
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum, ForeignKey, String, Text, Uuid
+from sqlalchemy import Date, Enum, ForeignKey, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
@@ -31,10 +32,20 @@ class Job(UUIDMixin, TimestampMixin, Base):
     company: Mapped[str] = mapped_column(String(200), nullable=False)
     location: Mapped[str | None] = mapped_column(String(200))
     source_url: Mapped[str | None] = mapped_column(String(1024))
-    description: Mapped[str] = mapped_column(Text, nullable=False)
+    # Optional on purpose. Most applications are logged for tracking only —
+    # forcing a full posting just to record "applied via referral" is friction
+    # the tracker should not impose. Tailoring checks for it separately.
+    description: Mapped[str | None] = mapped_column(Text)
+    # When the posting closes. Drives deadline reminders.
+    apply_by: Mapped[date | None] = mapped_column(Date)
     source: Mapped[JobSource] = mapped_column(
         Enum(JobSource, name="job_source"), default=JobSource.MANUAL, nullable=False
     )
+
+    @property
+    def has_description(self) -> bool:
+        """Whether there is enough posting text to tailor against."""
+        return bool(self.description and self.description.strip())
 
     user: Mapped["User"] = relationship(back_populates="jobs")
     tailorings: Mapped[list["Tailoring"]] = relationship(

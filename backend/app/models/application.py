@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Text, Uuid
+from sqlalchemy import DateTime, Enum, ForeignKey, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
@@ -45,6 +45,12 @@ class Application(UUIDMixin, TimestampMixin, Base):
     )
     applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str | None] = mapped_column(Text)
+
+    # One card per job. Without this the board can show the same role twice,
+    # which is confusing and makes the funnel numbers wrong.
+    __table_args__ = (
+        UniqueConstraint("user_id", "job_id", name="uq_applications_user_job"),
+    )
 
     user: Mapped["User"] = relationship(back_populates="applications")
     job: Mapped["Job"] = relationship(back_populates="applications")

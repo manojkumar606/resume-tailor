@@ -71,6 +71,17 @@ def create_tailoring(
                 detail="No default resume. Upload a resume or pass resume_id.",
             )
 
+    # description is optional now: applications can be tracked without one.
+    # Tailoring is the one thing that genuinely cannot proceed without it.
+    if not job.has_description:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "This job has no description saved. Add the posting text to tailor "
+                "a resume for it."
+            ),
+        )
+
     if not resume.parsed_text:
         raise HTTPException(
             status_code=422, detail="That resume has no extracted text to tailor"
