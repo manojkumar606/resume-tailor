@@ -220,7 +220,7 @@ export function JobPage() {
     return (
       <div className="space-y-4">
         <ErrorNote>{error ?? 'Job not found.'}</ErrorNote>
-        <Link to="/" className="text-sm text-brand hover:underline">
+        <Link to="/app" className="text-sm text-brand hover:underline">
           ← Back to dashboard
         </Link>
       </div>
@@ -232,7 +232,7 @@ export function JobPage() {
   return (
     <div className="space-y-5">
       <header>
-        <Link to="/" className="text-sm text-ink-muted hover:text-ink">
+        <Link to="/app" className="text-sm text-ink-muted hover:text-ink">
           ← Dashboard
         </Link>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight text-ink">
@@ -285,7 +285,7 @@ export function JobPage() {
         {noResumes && (
           <p className="mt-3 text-sm text-ink-muted">
             Upload a resume on the{' '}
-            <Link to="/" className="text-brand hover:underline">
+            <Link to="/app" className="text-brand hover:underline">
               dashboard
             </Link>{' '}
             first.

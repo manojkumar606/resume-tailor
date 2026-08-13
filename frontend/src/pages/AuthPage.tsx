@@ -88,7 +88,7 @@ function CodeStep({
     return () => clearInterval(timer)
   }, [cooldown])
 
-  const redirectTo = (location.state as { from?: string } | null)?.from ?? '/'
+  const redirectTo = (location.state as { from?: string } | null)?.from ?? '/app'
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -215,7 +215,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
     null,
   )
 
-  if (user) return <Navigate to="/" replace />
+  if (user) return <Navigate to="/app" replace />
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()

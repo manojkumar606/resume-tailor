@@ -39,12 +39,12 @@ export function Layout() {
           to reach navigation is the most common annoyance. */}
       <header className="sticky top-0 z-10 border-b border-edge bg-canvas/90 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
-          <Link to="/" className="shrink-0 text-base">
+          <Link to="/app" className="shrink-0 text-base">
             <Wordmark />
           </Link>
 
           <nav className="flex items-center gap-1">
-            <NavLink to="/" end className={navClasses}>
+            <NavLink to="/app" end className={navClasses}>
               Tailor
             </NavLink>
             <NavLink to="/board" className={navClasses}>
