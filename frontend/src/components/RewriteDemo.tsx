@@ -16,17 +16,39 @@ import { usePrefersReducedMotion } from './Reveal'
  * opposite of what the tool does.
  */
 
-const JOB_KEYWORDS = ['FastAPI', 'REST API design', 'PostgreSQL', 'Docker', 'AWS']
+/**
+ * The example is deliberately generic — internal reporting tools exist at almost
+ * every company, so a visitor recognises it whatever industry they are in.
+ *
+ * It is also internally consistent, which matters more than it sounds. Every
+ * term the rewrite introduces already appears in the candidate's own skills
+ * line; it is being moved out of a list nobody reads and into the sentence a
+ * hiring manager does read. Nothing is added from the posting alone. A demo that
+ * conjured a skill out of the job advert would be showing exactly the behaviour
+ * this product refuses.
+ */
+const JOB_KEYWORDS = [
+  'FastAPI',
+  'REST API design',
+  'PostgreSQL',
+  'Docker',
+  'AWS',
+  'CI/CD',
+]
 
-const BEFORE = 'Built Python services that process candidate assessment data.'
+const RESUME_SKILLS = ['Python', 'FastAPI', 'PostgreSQL', 'SQL', 'Git']
+
+const BEFORE =
+  'Worked on internal reporting tools and dashboards used by the operations team.'
 const AFTER =
-  'Designed and built Python backend services and REST APIs with FastAPI to process candidate assessment data.'
+  'Built and maintained internal reporting APIs in Python and FastAPI, modelling the underlying data in PostgreSQL for dashboards used by the operations team.'
 
-/** Highlighted once typing finishes — the phrases drawn from the posting. */
-const INJECTED = ['REST APIs', 'FastAPI', 'backend services']
+/** Highlighted once typing finishes. Every one of these is in RESUME_SKILLS. */
+const INJECTED = ['FastAPI', 'PostgreSQL', 'Python']
 
 const HONEST_SCORE = 68
-const GAPS = ['Docker', 'Kubernetes', 'AWS', 'CI/CD pipelines']
+/** Exactly the posting's requirements that appear nowhere in the resume. */
+const GAPS = ['Docker', 'AWS', 'CI/CD']
 
 const TYPE_MS = 22
 const HOLD_MS = 2600
@@ -122,17 +144,41 @@ export function RewriteDemo() {
 
         <div className="mt-6 space-y-4">
           <div>
-            <p className="text-xs text-ink-faint">Your bullet</p>
+            <p className="text-xs text-ink-faint">Your experience says</p>
             <p className="mt-1.5 text-sm leading-relaxed text-ink-muted line-through decoration-ink-faint/60">
               {BEFORE}
             </p>
           </div>
 
+          {/* Shown because it is where the rewrite draws from. Without it the
+              new terms would look conjured out of the job advert. */}
           <div>
-            <p className="text-xs text-ink-faint">Rewritten for this role</p>
+            <p className="text-xs text-ink-faint">
+              …and your skills list, which nobody reads closely
+            </p>
+            <p className="mt-1.5 text-sm text-ink-muted">
+              {RESUME_SKILLS.map((skill, index) => (
+                <span key={skill}>
+                  {index > 0 && <span className="text-ink-faint"> · </span>}
+                  <span
+                    className={
+                      INJECTED.includes(skill) ? 'text-ink' : undefined
+                    }
+                  >
+                    {skill}
+                  </span>
+                </span>
+              ))}
+            </p>
+          </div>
+
+          <div>
+            <p className="text-xs text-ink-faint">
+              Rewritten for this role — buried skills moved into the sentence
+            </p>
             {/* min-height reserves the final two lines so the card does not
                 resize as text arrives, which would shove the page around. */}
-            <p className="mt-1.5 min-h-[4.5rem] text-sm leading-relaxed text-ink">
+            <p className="mt-1.5 min-h-[6rem] text-sm leading-relaxed text-ink">
               {withHighlights(typed, highlighted)}
               {!reduced && phase === 'typing' && (
                 <span className="caret ml-0.5 inline-block h-4 w-[2px] translate-y-0.5 bg-brand" />
@@ -161,7 +207,7 @@ export function RewriteDemo() {
         </div>
 
         <p className="mt-5 text-xs text-ink-faint">
-          Requirements you genuinely do not meet
+          In the posting, nowhere in your resume
         </p>
         <ul className="mt-2 flex flex-wrap gap-1.5">
           {GAPS.map((gap) => (
