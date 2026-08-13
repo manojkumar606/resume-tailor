@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { useCountUp } from '../hooks/useCountUp'
 import { usePrefersReducedMotion } from './Reveal'
 
 /**
@@ -46,29 +47,6 @@ function withHighlights(text: string, active: boolean) {
       part
     ),
   )
-}
-
-function useCountUp(target: number, run: boolean) {
-  const [value, setValue] = useState(run ? 0 : target)
-
-  useEffect(() => {
-    if (!run) {
-      setValue(target)
-      return
-    }
-    let frame = 0
-    const steps = 34
-    const timer = setInterval(() => {
-      frame += 1
-      // Ease-out so it decelerates into the final number instead of stopping dead.
-      const progress = 1 - (1 - frame / steps) ** 3
-      setValue(Math.round(target * progress))
-      if (frame >= steps) clearInterval(timer)
-    }, 26)
-    return () => clearInterval(timer)
-  }, [target, run])
-
-  return value
 }
 
 export function RewriteDemo() {

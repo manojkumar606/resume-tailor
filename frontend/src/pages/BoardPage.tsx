@@ -48,17 +48,21 @@ function ScoreBadge({ score }: { score: number | null | undefined }) {
 function ApplicationCard({
   application,
   busy,
+  dragging,
   onMove,
   onSaveNotes,
   onDelete,
   onDragStart,
+  onDragEnd,
 }: {
   application: Application
   busy: boolean
+  dragging: boolean
   onMove: (status: ApplicationStatus) => void
   onSaveNotes: (notes: string | null) => void
   onDelete: () => void
   onDragStart: (event: React.DragEvent) => void
+  onDragEnd: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [notes, setNotes] = useState(application.notes ?? '')
@@ -72,9 +76,14 @@ function ApplicationCard({
       // why every card also carries the status selector below.
       draggable
       onDragStart={onDragStart}
-      className={`rounded-lg bg-raised p-3 ring-1 ring-edge transition-opacity ${
-        busy ? 'opacity-50' : ''
-      }`}
+      onDragEnd={onDragEnd}
+      // Lifting and tilting the card while it is held makes the drag feel
+      // physical, and makes it obvious which one is moving.
+      className={`cursor-grab rounded-lg bg-raised p-3 ring-1 transition-all active:cursor-grabbing ${
+        dragging
+          ? 'rotate-[1.5deg] scale-[1.03] opacity-90 shadow-lg shadow-black/50 ring-brand'
+          : 'ring-edge hover:ring-edge-strong'
+      } ${busy ? 'opacity-50' : ''}`}
     >
       <button
         onClick={() => setOpen((v) => !v)}
@@ -302,6 +311,81 @@ function QuickAddForm({ onAdded }: { onAdded: () => void }) {
   )
 }
 
+// ── Stats ────────────────────────────────────────────────────────────────────
+
+const SUBMITTED: ApplicationStatus[] = [
+  'applied',
+  'interviewing',
+  'offer',
+  'rejected',
+]
+
+/**
+ * Turns the board into a diagnosis rather than a list.
+ *
+ * The response rate is the useful one: 20 applications and no replies is a
+ * resume problem, 3 and no replies is a volume problem, and those call for
+ * completely different responses. The most common gap answers "what should I
+ * learn next" from data the app already has.
+ */
+function StatStrip({ applications }: { applications: Application[] }) {
+  const submitted = applications.filter((a) => SUBMITTED.includes(a.status))
+  const heard = applications.filter(
+    (a) => a.status === 'interviewing' || a.status === 'offer',
+  )
+  const responseRate = submitted.length
+    ? Math.round((heard.length / submitted.length) * 100)
+    : null
+
+  const counts = new Map<string, number>()
+  for (const a of applications) {
+    for (const gap of a.tailoring?.missing_keywords ?? []) {
+      counts.set(gap, (counts.get(gap) ?? 0) + 1)
+    }
+  }
+  const topGap = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]
+
+  const stats: { label: string; value: string; hint?: string }[] = [
+    { label: 'Applied', value: String(submitted.length) },
+    {
+      label: 'Heard back',
+      value: responseRate === null ? '—' : `${responseRate}%`,
+      hint: responseRate === null ? 'Nothing submitted yet' : undefined,
+    },
+    {
+      label: 'Awaiting a reply',
+      value: String(applications.filter((a) => a.is_stale).length),
+      hint: 'No movement in 14 days',
+    },
+    {
+      label: 'Most common gap',
+      value: topGap ? topGap[0] : '—',
+      hint: topGap
+        ? `Blocking ${topGap[1]} ${topGap[1] === 1 ? 'role' : 'roles'} — worth learning next`
+        : 'Tailor a resume to see this',
+    },
+  ]
+
+  return (
+    <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {stats.map((stat) => (
+        <div
+          key={stat.label}
+          className="rounded-xl bg-panel p-4 ring-1 ring-edge"
+        >
+          <dt className="text-xs text-ink-faint">{stat.label}</dt>
+          <dd className="mt-1.5 truncate text-xl font-semibold text-ink" title={stat.value}>
+            {stat.value}
+          </dd>
+          {stat.hint && (
+            <p className="mt-1 text-[11px] leading-snug text-ink-faint">{stat.hint}</p>
+          )}
+        </div>
+      ))}
+    </dl>
+  )
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export function BoardPage() {
@@ -310,6 +394,7 @@ export function BoardPage() {
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState<ApplicationStatus | null>(null)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setError(null)
@@ -382,6 +467,7 @@ export function BoardPage() {
   function handleDrop(event: React.DragEvent, status: ApplicationStatus) {
     event.preventDefault()
     setDragOver(null)
+    setDraggingId(null)
     const id = event.dataTransfer.getData('text/plain')
     const application = applications.find((a) => a.id === id)
     if (application) void move(application, status)
@@ -411,6 +497,8 @@ export function BoardPage() {
       </header>
 
       <ErrorNote>{error}</ErrorNote>
+
+      {applications.length > 0 && <StatStrip applications={applications} />}
 
       {applications.length === 0 ? (
         <Card>
@@ -452,12 +540,15 @@ export function BoardPage() {
                       key={application.id}
                       application={application}
                       busy={busyId === application.id}
+                      dragging={draggingId === application.id}
                       onMove={(status) => void move(application, status)}
                       onSaveNotes={(notes) => void saveNotes(application, notes)}
                       onDelete={() => void remove(application)}
-                      onDragStart={(e) =>
+                      onDragStart={(e) => {
                         e.dataTransfer.setData('text/plain', application.id)
-                      }
+                        setDraggingId(application.id)
+                      }}
+                      onDragEnd={() => setDraggingId(null)}
                     />
                   ))}
                 </ul>

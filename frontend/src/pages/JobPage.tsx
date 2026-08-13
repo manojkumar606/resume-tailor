@@ -11,51 +11,13 @@ import {
   Select,
   Spinner,
 } from '../components/ui'
+import { ScoreDial } from '../components/ScoreDial'
+import { TailoringProgress } from '../components/TailoringProgress'
 import { api } from '../lib/api'
 import type { JobDetail, Resume, Tailoring, TailoringDetail } from '../lib/types'
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Something went wrong.'
-}
-
-/* Only white, grey and red are available, so the score reads as
-   strong / middling / weak rather than the usual green-amber-red. */
-function scoreTone(score: number): string {
-  if (score >= 75) return 'text-ink'
-  if (score >= 50) return 'text-ink-muted'
-  return 'text-brand'
-}
-
-function MatchScore({ score }: { score: number | null }) {
-  if (score === null) {
-    return <p className="text-sm text-ink-muted">No match score returned.</p>
-  }
-
-  const rounded = Math.round(score)
-
-  return (
-    <div>
-      <p className={`text-5xl leading-none font-semibold tabular-nums ${scoreTone(score)}`}>
-        {rounded}
-        <span className="text-lg font-normal text-ink-faint">/100</span>
-      </p>
-
-      <div
-        role="img"
-        aria-label={`Match score ${rounded} out of 100`}
-        className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-raised"
-      >
-        <div
-          className={`h-full rounded-full ${score >= 50 ? 'bg-ink' : 'bg-brand'}`}
-          style={{ width: `${rounded}%` }}
-        />
-      </div>
-
-      <p className="mt-3 text-xs text-ink-faint">
-        How well your experience fit this role <em>before</em> tailoring.
-      </p>
-    </div>
-  )
 }
 
 function TailoringResult({
@@ -82,7 +44,7 @@ function TailoringResult({
         <Card>
           <CardTitle>Match score</CardTitle>
           <div className="mt-4">
-            <MatchScore score={tailoring.match_score} />
+            <ScoreDial score={tailoring.match_score} />
           </div>
         </Card>
 
@@ -276,11 +238,7 @@ export function JobPage() {
           </Button>
         </div>
 
-        {tailoring && (
-          <p className="mt-3 text-sm text-ink-muted">
-            Rewriting against this posting — usually 10 to 20 seconds.
-          </p>
-        )}
+        {tailoring && <TailoringProgress />}
 
         {noResumes && (
           <p className="mt-3 text-sm text-ink-muted">

@@ -116,6 +116,17 @@
   animation: caret-blink 1.1s steps(1) infinite;
 }
 
+/* Indeterminate progress. Slides a short bar back and forth rather than
+   claiming a percentage the server cannot actually report. */
+@keyframes shimmer-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
+.shimmer {
+  animation: shimmer-slide 1.5s ease-in-out infinite;
+}
+
 /* Faint grid behind the hero, so pure black reads as depth rather than a void. */
 .hero-grid {
   background-image:
@@ -134,7 +145,8 @@
   }
   .float-slow,
   .glow-pulse,
-  .caret {
+  .caret,
+  .shimmer {
     animation: none;
   }
 }
