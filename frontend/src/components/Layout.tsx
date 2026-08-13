@@ -1,7 +1,13 @@
-import { Link, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet } from 'react-router-dom'
 
 import { useAuth } from '../auth/AuthContext'
 import { Button } from './ui'
+
+function navClasses({ isActive }: { isActive: boolean }) {
+  return `rounded-md px-2.5 py-2 text-sm font-medium transition-colors ${
+    isActive ? 'bg-raised text-ink' : 'text-ink-muted hover:text-ink'
+  }`
+}
 
 export function Wordmark({ className = '' }: { className?: string }) {
   return (
@@ -36,6 +42,15 @@ export function Layout() {
           <Link to="/" className="shrink-0 text-base">
             <Wordmark />
           </Link>
+
+          <nav className="flex items-center gap-1">
+            <NavLink to="/" end className={navClasses}>
+              Tailor
+            </NavLink>
+            <NavLink to="/board" className={navClasses}>
+              Board
+            </NavLink>
+          </nav>
 
           <div className="ml-auto flex min-w-0 items-center gap-3">
             {/* Hidden on narrow screens: the address truncates to uselessness

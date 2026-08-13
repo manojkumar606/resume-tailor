@@ -14,8 +14,10 @@ import {
   Textarea,
 } from '../components/ui'
 import { api } from '../lib/api'
-import type { Job, Resume } from '../lib/types'
+import type { Job, Resume, UUID } from '../lib/types'
 
+// Only enforced when a description is actually supplied — it is optional now,
+// and only needed for tailoring.
 const MIN_DESCRIPTION_LENGTH = 50
 
 function errorMessage(err: unknown): string {
@@ -131,15 +133,23 @@ function ResumesPanel({
 
 // ── Jobs ─────────────────────────────────────────────────────────────────────
 
-const EMPTY_JOB = { title: '', company: '', location: '', description: '' }
+const EMPTY_JOB = {
+  title: '',
+  company: '',
+  location: '',
+  description: '',
+  apply_by: '',
+}
 
 function JobsPanel({
   jobs,
+  trackedJobIds,
   loading,
   error,
   onChanged,
 }: {
   jobs: Job[]
+  trackedJobIds: Set<UUID>
   loading: boolean
   error: string | null
   onChanged: () => void
@@ -149,7 +159,10 @@ function JobsPanel({
   const [busy, setBusy] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
 
-  const remaining = MIN_DESCRIPTION_LENGTH - form.description.trim().length
+  const description = form.description.trim()
+  // Empty is fine; a couple of words is a mistake worth catching before submit.
+  const tooShort =
+    description.length > 0 && description.length < MIN_DESCRIPTION_LENGTH
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -160,10 +173,24 @@ function JobsPanel({
         title: form.title.trim(),
         company: form.company.trim(),
         location: form.location.trim() || null,
-        description: form.description.trim(),
+        description: description || null,
+        apply_by: form.apply_by || null,
       })
       setForm(EMPTY_JOB)
       setShowForm(false)
+      onChanged()
+    } catch (err) {
+      setLocalError(errorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function track(jobId: UUID) {
+    setLocalError(null)
+    setBusy(true)
+    try {
+      await api.applications.track(jobId)
       onChanged()
     } catch (err) {
       setLocalError(errorMessage(err))
@@ -199,28 +226,36 @@ function JobsPanel({
               onChange={(e) => setForm({ ...form, company: e.target.value })}
             />
           </Field>
-          <Field label="Location" hint="Optional">
-            <Input
-              value={form.location}
-              onChange={(e) => setForm({ ...form, location: e.target.value })}
-            />
-          </Field>
+          <div className="grid gap-3.5 sm:grid-cols-2">
+            <Field label="Location" hint="Optional">
+              <Input
+                value={form.location}
+                onChange={(e) => setForm({ ...form, location: e.target.value })}
+              />
+            </Field>
+            <Field label="Last date to apply" hint="Optional">
+              <Input
+                type="date"
+                value={form.apply_by}
+                onChange={(e) => setForm({ ...form, apply_by: e.target.value })}
+              />
+            </Field>
+          </div>
           <Field
             label="Job description"
             hint={
-              remaining > 0
-                ? `${remaining} more characters needed`
-                : 'Paste the whole posting — more detail gives a better rewrite'
+              tooShort
+                ? `Needs ${MIN_DESCRIPTION_LENGTH - description.length} more characters, or leave it empty`
+                : 'Only needed to tailor a resume — leave empty to just track it'
             }
           >
             <Textarea
-              required
               rows={8}
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
             />
           </Field>
-          <Button type="submit" loading={busy} disabled={remaining > 0}>
+          <Button type="submit" loading={busy} disabled={tooShort}>
             Save job
           </Button>
         </form>
@@ -229,28 +264,39 @@ function JobsPanel({
       {loading ? (
         <Spinner label="Loading jobs…" />
       ) : jobs.length === 0 ? (
-        <EmptyState>Paste a job description to begin.</EmptyState>
+        <EmptyState>
+          Paste a job description to tailor against, or{' '}
+          <Link to="/board" className="text-brand hover:underline">
+            log an application
+          </Link>{' '}
+          on the board.
+        </EmptyState>
       ) : (
         <ul className="divide-y divide-edge">
           {jobs.map((job) => (
-            <li key={job.id}>
+            <li key={job.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
               <Link
                 to={`/jobs/${job.id}`}
-                className="group -mx-2 flex min-h-11 items-center gap-3 rounded-lg px-2 py-3 transition-colors hover:bg-raised"
+                className="group min-w-0 flex-1 rounded-lg py-1 transition-colors"
               >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-ink group-hover:text-brand">
-                    {job.title}
-                  </p>
-                  <p className="mt-0.5 truncate text-xs text-ink-muted">
-                    {job.company}
-                    {job.location ? ` · ${job.location}` : ''}
-                  </p>
-                </div>
-                <span aria-hidden className="text-ink-faint group-hover:text-brand">
-                  →
-                </span>
+                <p className="truncate text-sm font-medium text-ink group-hover:text-brand">
+                  {job.title}
+                </p>
+                <p className="mt-0.5 truncate text-xs text-ink-muted">
+                  {job.company}
+                  {job.location ? ` · ${job.location}` : ''}
+                </p>
               </Link>
+
+              {!job.has_description && <Pill tone="quiet">No description</Pill>}
+
+              {trackedJobIds.has(job.id) ? (
+                <Pill tone="neutral">On board</Pill>
+              ) : (
+                <Button variant="ghost" disabled={busy} onClick={() => track(job.id)}>
+                  Track
+                </Button>
+              )}
             </li>
           ))}
         </ul>
@@ -264,18 +310,22 @@ function JobsPanel({
 export function DashboardPage() {
   const [resumes, setResumes] = useState<Resume[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
+  const [trackedJobIds, setTrackedJobIds] = useState<Set<UUID>>(new Set())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setError(null)
     try {
-      const [nextResumes, nextJobs] = await Promise.all([
+      const [nextResumes, nextJobs, applications] = await Promise.all([
         api.resumes.list(),
         api.jobs.list(),
+        api.applications.list(),
       ])
       setResumes(nextResumes)
       setJobs(nextJobs)
+      // So a job already on the board offers no misleading "Track" button.
+      setTrackedJobIds(new Set(applications.map((a) => a.job.id)))
     } catch (err) {
       setError(errorMessage(err))
     } finally {
@@ -290,7 +340,7 @@ export function DashboardPage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">Dashboard</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">Tailor</h1>
         <p className="mt-1 text-sm text-ink-muted">
           Upload a resume, add a job, then open the job to tailor.
         </p>
@@ -303,7 +353,13 @@ export function DashboardPage() {
           error={error}
           onChanged={load}
         />
-        <JobsPanel jobs={jobs} loading={loading} error={error} onChanged={load} />
+        <JobsPanel
+          jobs={jobs}
+          trackedJobIds={trackedJobIds}
+          loading={loading}
+          error={error}
+          onChanged={load}
+        />
       </div>
     </div>
   )

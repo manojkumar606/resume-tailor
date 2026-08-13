@@ -54,6 +54,10 @@ export interface Job {
   company: string
   location: string | null
   source_url: string | null
+  /** ISO date (no time) for when the posting closes. */
+  apply_by: string | null
+  /** False for tracking-only jobs — they cannot be tailored. */
+  has_description: boolean
   source: JobSource
   created_at: string
 }
@@ -65,9 +69,67 @@ export interface JobDetail extends Job {
 export interface JobInput {
   title: string
   company: string
-  description: string
+  /** Optional: omit to track an application without tailoring. */
+  description?: string | null
   location?: string | null
   source_url?: string | null
+  apply_by?: string | null
+}
+
+export type ApplicationStatus =
+  | 'saved'
+  | 'applied'
+  | 'interviewing'
+  | 'offer'
+  | 'rejected'
+
+export interface ApplicationJob {
+  id: UUID
+  title: string
+  company: string
+  location: string | null
+  source_url: string | null
+  apply_by: string | null
+  has_description: boolean
+}
+
+export interface ApplicationTailoring {
+  id: UUID
+  match_score: number | null
+  missing_keywords: string[] | null
+}
+
+export interface Application {
+  id: UUID
+  status: ApplicationStatus
+  applied_at: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+  job: ApplicationJob
+  tailoring: ApplicationTailoring | null
+  /** Server-computed so the threshold lives in one place. */
+  is_stale: boolean
+  days_since_update: number
+  /** Negative once the deadline has passed; null when none is set. */
+  days_until_deadline: number | null
+}
+
+export interface QuickAddInput {
+  title: string
+  company: string
+  location?: string | null
+  source_url?: string | null
+  apply_by?: string | null
+  description?: string | null
+  status?: ApplicationStatus
+  notes?: string | null
+}
+
+export interface ApplicationPatch {
+  status?: ApplicationStatus
+  notes?: string | null
+  tailoring_id?: UUID | null
 }
 
 export type TailoringStatus = 'pending' | 'running' | 'succeeded' | 'failed'

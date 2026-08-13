@@ -1,4 +1,6 @@
 import type {
+  Application,
+  ApplicationPatch,
   AuthResponse,
   CodeSent,
   Job,
@@ -6,6 +8,7 @@ import type {
   JobInput,
   Resume,
   ResumeDetail,
+  QuickAddInput,
   Tailoring,
   TailoringDetail,
   User,
@@ -278,6 +281,33 @@ export const api = {
       json<JobDetail>('/jobs', { method: 'POST', body: JSON.stringify(input) }),
 
     remove: (id: UUID) => json<void>(`/jobs/${id}`, { method: 'DELETE' }),
+  },
+
+  applications: {
+    /** The whole board in one request. */
+    list: () => json<Application[]>('/applications'),
+
+    /** Log a job and its card together, with no tailoring involved. */
+    quickAdd: (input: QuickAddInput) =>
+      json<Application>('/applications/quick', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+
+    /** Put a job that already exists on the board. */
+    track: (jobId: UUID) =>
+      json<Application>('/applications', {
+        method: 'POST',
+        body: JSON.stringify({ job_id: jobId }),
+      }),
+
+    update: (id: UUID, patch: ApplicationPatch) =>
+      json<Application>(`/applications/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      }),
+
+    remove: (id: UUID) => json<void>(`/applications/${id}`, { method: 'DELETE' }),
   },
 
   tailorings: {

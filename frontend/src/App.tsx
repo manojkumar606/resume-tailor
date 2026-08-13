@@ -4,6 +4,7 @@ import { AuthProvider } from './auth/AuthContext'
 import { Layout } from './components/Layout'
 import { RequireAuth } from './components/RequireAuth'
 import { AuthPage } from './pages/AuthPage'
+import { BoardPage } from './pages/BoardPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { JobPage } from './pages/JobPage'
 
@@ -25,6 +26,7 @@ export default function App() {
           }
         >
           <Route path="/" element={<DashboardPage />} />
+          <Route path="/board" element={<BoardPage />} />
           <Route path="/jobs/:jobId" element={<JobPage />} />
         </Route>
 
