@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 
 import { useAuth } from '../auth/AuthContext'
+import { CodeInput } from '../components/CodeInput'
 import { Credit, Wordmark } from '../components/Layout'
 import { Button, Card, ErrorNote, Field, Input } from '../components/ui'
 import { ApiError } from '../lib/api'
@@ -10,6 +11,22 @@ const MIN_PASSWORD_LENGTH = 8
 const CODE_LENGTH = 6
 
 const INLINE_LINK = 'font-medium underline underline-offset-2 hover:no-underline'
+
+/** Shown beside the form on wide screens, where the space is otherwise empty. */
+const SELLING_POINTS = [
+  {
+    title: 'Written for one specific job',
+    body: 'Not a generic polish. Your real experience, aimed at the posting in front of you.',
+  },
+  {
+    title: 'It tells you what you lack',
+    body: 'The gaps it finds are what the screening call will probe. Nothing is invented to paper over them.',
+  },
+  {
+    title: 'Every application in one board',
+    body: 'What you sent, who has gone quiet, what closes on Friday.',
+  },
+]
 
 /**
  * Turn a failed request into something a person can act on.
@@ -100,9 +117,7 @@ function CodeStep({
       navigate(redirectTo, { replace: true })
     } catch (err) {
       setError(
-        err instanceof ApiError && err.status === 400
-          ? err.message
-          : authErrorMessage(err),
+        err instanceof ApiError && err.status === 400 ? err.message : authErrorMessage(err),
       )
       setCode('')
     } finally {
@@ -131,71 +146,64 @@ function CodeStep({
   }
 
   return (
-    <>
-      <Card>
-        <h1 className="text-lg font-semibold text-ink">Enter your code</h1>
-        <p className="mt-2 text-sm text-ink-muted">
-          We emailed a {CODE_LENGTH}-digit code to{' '}
-          <span className="font-medium text-ink">{email}</span>. It expires in{' '}
-          {expiresInMinutes} minutes.
+    <Card>
+      <div className="mb-1 flex size-10 items-center justify-center rounded-lg bg-brand-wash ring-1 ring-brand/30">
+        <span aria-hidden className="text-lg">
+          ✉
+        </span>
+      </div>
+
+      <h1 className="mt-4 text-lg font-semibold text-ink">Check your email</h1>
+      <p className="mt-2 text-sm leading-relaxed text-ink-muted">
+        We sent a {CODE_LENGTH}-digit code to{' '}
+        <span className="font-medium text-ink">{email}</span>. It expires in{' '}
+        {expiresInMinutes} minutes.
+      </p>
+
+      <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+        <CodeInput
+          value={code}
+          onChange={setCode}
+          length={CODE_LENGTH}
+          disabled={busy}
+          label={`${CODE_LENGTH}-digit code`}
+        />
+
+        <Button
+          type="submit"
+          loading={busy}
+          disabled={code.length !== CODE_LENGTH}
+          className="w-full"
+        >
+          Continue
+        </Button>
+      </form>
+
+      {notice && (
+        <p className="mt-3 rounded-lg bg-raised px-3 py-2.5 text-sm text-ink-muted ring-1 ring-edge">
+          {notice}
         </p>
+      )}
+      <ErrorNote>{error}</ErrorNote>
 
-        <form onSubmit={handleSubmit} className="mt-5 space-y-4">
-          <Input
-            value={code}
-            onChange={(e) =>
-              // Strip anything non-numeric as it is typed: codes get pasted
-              // with stray spaces straight out of the email.
-              setCode(e.target.value.replace(/\D/g, '').slice(0, CODE_LENGTH))
-            }
-            required
-            autoFocus
-            inputMode="numeric"
-            // Lets iOS and Android offer the code from the notification.
-            autoComplete="one-time-code"
-            placeholder="000000"
-            aria-label={`${CODE_LENGTH}-digit code`}
-            className="text-center text-2xl tracking-[0.4em] tabular-nums"
-          />
+      <p className="mt-5 text-sm text-ink-faint">Not arrived? Check your spam folder.</p>
 
-          <Button
-            type="submit"
-            loading={busy}
-            disabled={code.length !== CODE_LENGTH}
-            className="w-full"
-          >
-            Continue
-          </Button>
-        </form>
-
-        {notice && (
-          <p className="mt-3 rounded-lg bg-raised px-3 py-2.5 text-sm text-ink-muted ring-1 ring-edge">
-            {notice}
-          </p>
-        )}
-        <ErrorNote>{error}</ErrorNote>
-
-        <p className="mt-5 text-sm text-ink-faint">
-          Not arrived? Check your spam folder.
-        </p>
-
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-          <button
-            onClick={handleResend}
-            disabled={resending || cooldown > 0}
-            className="min-h-11 text-sm font-medium text-brand hover:underline disabled:text-ink-faint disabled:no-underline"
-          >
-            {cooldown > 0 ? `Resend in ${cooldown}s` : 'Send a new code'}
-          </button>
-          <button
-            onClick={onBack}
-            className="min-h-11 text-sm text-ink-faint hover:text-ink"
-          >
-            Use a different email
-          </button>
-        </div>
-      </Card>
-    </>
+      <div className="mt-2 flex flex-wrap items-center gap-x-4">
+        <button
+          onClick={handleResend}
+          disabled={resending || cooldown > 0}
+          className="min-h-11 text-sm font-medium text-brand hover:underline disabled:text-ink-faint disabled:no-underline"
+        >
+          {cooldown > 0 ? `Resend in ${cooldown}s` : 'Send a new code'}
+        </button>
+        <button
+          onClick={onBack}
+          className="min-h-11 text-sm text-ink-faint hover:text-ink"
+        >
+          Use a different email
+        </button>
+      </div>
+    </Card>
   )
 }
 
@@ -211,9 +219,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const [error, setError] = useState<ReactNode>(null)
   const [busy, setBusy] = useState(false)
   // Set once a code has been sent; its presence is what shows step two.
-  const [pending, setPending] = useState<{ email: string; minutes: number } | null>(
-    null,
-  )
+  const [pending, setPending] = useState<{ email: string; minutes: number } | null>(null)
 
   if (user) return <Navigate to="/app" replace />
 
@@ -240,92 +246,141 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col px-4 py-10">
-      <div className="mx-auto flex w-full max-w-sm grow flex-col justify-center">
-        <div className="mb-7 text-center">
-          <Wordmark className="text-2xl" />
-          <p className="mt-2 text-sm text-ink-muted">
-            {pending
-              ? 'One more step.'
-              : isSignup
-                ? 'Rewrite your resume for the job you actually want.'
-                : 'Welcome back.'}
-          </p>
-        </div>
-
-        {pending ? (
-          <CodeStep
-            email={pending.email}
-            expiresInMinutes={pending.minutes}
-            onBack={() => setPending(null)}
-          />
-        ) : (
-          <>
-            <Card>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                {isSignup && (
-                  <Field label="Full name" hint="Optional">
-                    <Input
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      autoComplete="name"
-                    />
-                  </Field>
-                )}
-
-                <Field label="Email">
-                  <Input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    autoComplete="email"
-                    inputMode="email"
-                    autoCapitalize="none"
-                  />
-                </Field>
-
-                <Field
-                  label="Password"
-                  hint={
-                    isSignup ? `At least ${MIN_PASSWORD_LENGTH} characters` : undefined
-                  }
-                >
-                  <Input
-                    type="password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    autoComplete={isSignup ? 'new-password' : 'current-password'}
-                  />
-                </Field>
-
-                <ErrorNote>{error}</ErrorNote>
-
-                <Button type="submit" loading={busy} className="w-full">
-                  {isSignup ? 'Create account' : 'Sign in'}
-                </Button>
-              </form>
-            </Card>
-
-            <p className="mt-3 text-center text-xs text-ink-faint">
-              We'll email you a {CODE_LENGTH}-digit code to confirm it's you.
-            </p>
-
-            <p className="mt-4 text-center text-sm text-ink-muted">
-              {isSignup ? 'Already have an account? ' : "Don't have an account? "}
-              <Link
-                to={isSignup ? '/login' : '/signup'}
-                className="font-medium text-brand hover:underline"
-              >
-                {isSignup ? 'Sign in' : 'Sign up'}
-              </Link>
-            </p>
-          </>
-        )}
+    <div className="relative isolate min-h-screen lg:grid lg:grid-cols-[1.05fr_1fr]">
+      {/* Decorative only. Matches the landing page so the two feel continuous. */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+        <div className="hero-grid absolute inset-0" />
+        <div className="glow-pulse absolute top-[-16rem] left-[-8rem] h-[32rem] w-[32rem] rounded-full bg-brand/20 blur-[110px]" />
       </div>
 
-      <Credit className="mt-10 text-center text-xs text-ink-faint" />
+      {/* The pitch. Desktop only: on a phone this space belongs to the form,
+          and a signed-out visitor has already read it on the landing page. */}
+      <aside className="hidden border-r border-edge px-12 py-14 lg:flex lg:flex-col">
+        <Link to="/">
+          <Wordmark className="text-xl" />
+        </Link>
+
+        <div className="mt-auto mb-auto max-w-md">
+          <h2 className="text-3xl leading-tight font-semibold tracking-tight text-ink">
+            Stop sending the same resume to every job.
+          </h2>
+
+          <ul className="mt-9 space-y-6">
+            {SELLING_POINTS.map((point) => (
+              <li key={point.title} className="flex gap-3.5">
+                <span
+                  aria-hidden
+                  className="mt-2 size-1.5 shrink-0 rounded-full bg-brand"
+                />
+                <div>
+                  <p className="text-sm font-semibold text-ink">{point.title}</p>
+                  <p className="mt-1 text-sm leading-relaxed text-ink-muted">
+                    {point.body}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <Credit className="text-xs text-ink-faint" />
+      </aside>
+
+      {/* The form */}
+      <main className="flex flex-col px-4 py-10 sm:px-6">
+        <div className="mx-auto flex w-full max-w-sm grow flex-col justify-center">
+          {/* Mobile only — the desktop wordmark lives in the panel. */}
+          <div className="mb-7 text-center lg:hidden">
+            <Link to="/">
+              <Wordmark className="text-2xl" />
+            </Link>
+          </div>
+
+          {pending ? (
+            <CodeStep
+              email={pending.email}
+              expiresInMinutes={pending.minutes}
+              onBack={() => setPending(null)}
+            />
+          ) : (
+            <>
+              <div className="mb-6">
+                <h1 className="text-2xl font-semibold tracking-tight text-ink">
+                  {isSignup ? 'Create your account' : 'Welcome back'}
+                </h1>
+                <p className="mt-1.5 text-sm text-ink-muted">
+                  {isSignup
+                    ? 'Free, and no card required.'
+                    : 'Sign in to pick up where you left off.'}
+                </p>
+              </div>
+
+              <Card>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  {isSignup && (
+                    <Field label="Full name" hint="Optional">
+                      <Input
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        autoComplete="name"
+                      />
+                    </Field>
+                  )}
+
+                  <Field label="Email">
+                    <Input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      autoComplete="email"
+                      inputMode="email"
+                      autoCapitalize="none"
+                    />
+                  </Field>
+
+                  <Field
+                    label="Password"
+                    hint={isSignup ? `At least ${MIN_PASSWORD_LENGTH} characters` : undefined}
+                  >
+                    <Input
+                      type="password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      autoComplete={isSignup ? 'new-password' : 'current-password'}
+                    />
+                  </Field>
+
+                  <ErrorNote>{error}</ErrorNote>
+
+                  <Button type="submit" loading={busy} className="w-full">
+                    {isSignup ? 'Create account' : 'Sign in'}
+                  </Button>
+                </form>
+              </Card>
+
+              <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-xs text-ink-faint">
+                <span aria-hidden>🔒</span>
+                We'll email a {CODE_LENGTH}-digit code — a password alone never
+                gets in.
+              </p>
+
+              <p className="mt-5 text-center text-sm text-ink-muted">
+                {isSignup ? 'Already have an account? ' : "Don't have an account? "}
+                <Link
+                  to={isSignup ? '/login' : '/signup'}
+                  className="font-medium text-brand hover:underline"
+                >
+                  {isSignup ? 'Sign in' : 'Sign up'}
+                </Link>
+              </p>
+            </>
+          )}
+        </div>
+
+        <Credit className="mt-10 text-center text-xs text-ink-faint lg:hidden" />
+      </main>
     </div>
   )
 }
