@@ -61,6 +61,11 @@ services:
         sync: false
       - key: EMAIL_FROM_ADDRESS
         sync: false
+      # Shared secret for the daily reminder job. Must match the CRON_SECRET
+      # repository secret used by .github/workflows/reminders.yml. Unset
+      # leaves the endpoint disabled rather than open.
+      - key: CRON_SECRET
+        sync: false
       - key: S3_ENDPOINT_URL
         sync: false
       - key: S3_BUCKET

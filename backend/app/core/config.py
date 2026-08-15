@@ -74,6 +74,15 @@ class Settings(BaseSettings):
     MAX_SCREENSHOTS: int = 4
     MAX_SCREENSHOT_BYTES: int = 8 * 1024 * 1024
 
+    # --- Reminders ---
+    # Shared secret for the daily reminder job. Empty disables the endpoint
+    # entirely rather than leaving it open.
+    CRON_SECRET: str = ""
+    # A deadline this close is worth an email.
+    REMINDER_DEADLINE_DAYS: int = 3
+    # Never nag about the same application more often than this.
+    REMINDER_COOLDOWN_DAYS: int = 7
+
     # --- LLM ---
     LLM_PROVIDER: str = "gemini"
     GEMINI_API_KEY: str = ""

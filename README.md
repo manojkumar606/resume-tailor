@@ -194,6 +194,49 @@ Subject: 429173 is your Resume Tailor code
 `EMAIL_PROVIDER=brevo` delivers for real. Brevo gives 300 emails/day free and
 allows a single verified sender address without owning a domain.
 
+## Continuous integration
+
+`.github/workflows/ci.yml` runs the backend suite, the frontend suite, and a
+type-checking build on every push and pull request. It needs no secrets: the
+tests use in-memory SQLite with fake email and model providers, so CI never
+touches Neon, Brevo, Gemini or R2.
+
+The workflow produces the checks; turning them into a **gate** is two dashboard
+toggles, because Render and Vercel deploy from the same push independently:
+
+- **Render** → service → Settings → Build & Deploy → *Wait for CI checks to pass*
+- **Vercel** → project → Settings → Git → *Ignored Build Step* (or require the
+  check via branch protection)
+
+Without those, a red build still deploys.
+
+## Daily reminders
+
+A tracker only works if people come back to it, and nothing else in this app
+brings them back.
+
+`.github/workflows/reminders.yml` runs at 03:30 UTC (09:00 IST) and calls
+`POST /api/v1/internal/reminders/run`. GitHub Actions is the scheduler because
+Render's free plan has no cron; the workflow does no work itself.
+
+Two things earn an email, and nothing else does — a reminder people learn to
+ignore is worse than none:
+
+- a deadline within `REMINDER_DEADLINE_DAYS` on something **not yet applied to**
+- an application sitting in Applied with no movement for `STALE_APPLICATION_DAYS`
+
+Everything due for one person goes into a single digest, and each card is
+stamped so a daily job cannot nag about the same one every morning. The stamp is
+written only on a successful send, so a failed email is retried next run rather
+than silently skipped for a week.
+
+The endpoint authenticates with a shared secret in `X-Cron-Secret`, compared in
+constant time. An unset `CRON_SECRET` disables it outright — a blank secret
+matching a blank header would leave it open.
+
+Setup: put the same value in Render's environment and in the repository's
+**Settings → Secrets and variables → Actions → `CRON_SECRET`**.
+
 ## Deployment
 
 Backend on Render (Docker), frontend on Vercel, database on Neon, files on

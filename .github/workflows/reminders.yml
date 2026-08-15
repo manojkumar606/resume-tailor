@@ -1,0 +1,47 @@
+name: Daily reminders
+
+# GitHub Actions is the scheduler because Render's free plan has no cron. This
+# workflow does no work itself — it just pokes the API, which does the sending.
+on:
+  schedule:
+    # 03:30 UTC = 09:00 IST. GitHub runs scheduled jobs on a best-effort basis
+    # and can be late by a good few minutes under load; a digest does not care.
+    - cron: '30 3 * * *'
+  # So it can be triggered by hand from the Actions tab to verify the wiring.
+  workflow_dispatch:
+
+jobs:
+  send:
+    name: Send digests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger reminder run
+        env:
+          API_URL: https://resume-tailor-api-q27h.onrender.com
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CRON_SECRET}" ]; then
+            echo "CRON_SECRET is not set in repository secrets — nothing to do."
+            exit 1
+          fi
+
+          # The free Render instance sleeps after inactivity, and this request
+          # is often the first traffic of the day, so it has to wait out a cold
+          # start rather than fail. --retry covers the wake-up window.
+          response=$(curl --silent --show-error --fail-with-body \
+            --max-time 180 --retry 3 --retry-delay 20 --retry-connrefused \
+            --write-out '\n%{http_code}' \
+            -X POST "${API_URL}/api/v1/internal/reminders/run" \
+            -H "X-Cron-Secret: ${CRON_SECRET}")
+
+          body=$(printf '%s' "$response" | sed '$d')
+          code=$(printf '%s' "$response" | tail -n1)
+
+          echo "HTTP $code"
+          # The body is a small counts object and carries no personal data, so
+          # it is safe in the run log and is the only record of what was sent.
+          echo "$body"
+
+          [ "$code" = "200" ]
