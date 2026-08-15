@@ -1,13 +1,84 @@
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+    status,
+)
 from sqlalchemy import select
 
 from app.api.deps import DbSession, VerifiedUser
+from app.core.config import settings
 from app.models.job import Job
-from app.schemas.job import JobCreate, JobDetail, JobRead, JobUpdate
+from app.schemas.job import JobCreate, JobDetail, JobImportResult, JobRead, JobUpdate
+from app.services.job_import import (
+    SUPPORTED_IMAGE_TYPES,
+    ImportError_,
+    parse_screenshots,
+)
+from app.services.llm import LLMProvider, get_llm_provider
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+Provider = Annotated[LLMProvider, Depends(get_llm_provider)]
+
+
+# Declared before /{job_id}: FastAPI matches in order, and a UUID path param
+# would otherwise swallow this literal and reject it as a malformed UUID.
+@router.post("/parse-screenshots", response_model=JobImportResult)
+def parse_job_screenshots(
+    current_user: VerifiedUser,
+    provider: Provider,
+    files: list[UploadFile] = File(...),
+) -> JobImportResult:
+    """Read a posting out of screenshots, without saving anything.
+
+    Screenshots rather than a URL because the major boards block server-side
+    fetching — this image has already been rendered by the user's own
+    logged-in browser, so none of that applies.
+    """
+    if len(files) > settings.MAX_SCREENSHOTS:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Upload at most {settings.MAX_SCREENSHOTS} screenshots at once.",
+        )
+
+    images: list[tuple[bytes, str]] = []
+    for upload in files:
+        mime = (upload.content_type or "").split(";")[0].strip().lower()
+        if mime not in SUPPORTED_IMAGE_TYPES:
+            raise HTTPException(
+                status_code=415,
+                detail=(
+                    f"{upload.filename or 'That file'} is not a supported image. "
+                    f"Use {', '.join(sorted(SUPPORTED_IMAGE_TYPES))}."
+                ),
+            )
+
+        data = upload.file.read()
+        if not data:
+            raise HTTPException(status_code=400, detail="One of the images was empty.")
+        if len(data) > settings.MAX_SCREENSHOT_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"{upload.filename or 'That image'} is larger than "
+                    f"{settings.MAX_SCREENSHOT_BYTES // (1024 * 1024)} MB."
+                ),
+            )
+        images.append((data, mime))
+
+    try:
+        return JobImportResult(**parse_screenshots(provider, images))
+    except ImportError_ as exc:
+        # 422: the request was well-formed, the images just were not readable.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def _get_owned_job(db: DbSession, user_id: uuid.UUID, job_id: uuid.UUID) -> Job:

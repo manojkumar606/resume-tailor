@@ -5,6 +5,7 @@ import type {
   CodeSent,
   Job,
   JobDetail,
+  JobImportResult,
   JobInput,
   Resume,
   ResumeDetail,
@@ -280,6 +281,16 @@ export const api = {
 
     create: (input: JobInput) =>
       json<JobDetail>('/jobs', { method: 'POST', body: JSON.stringify(input) }),
+
+    /** Read a posting out of screenshots. Saves nothing — fills a form. */
+    parseScreenshots: (files: File[]) => {
+      const form = new FormData()
+      for (const file of files) form.append('files', file)
+      return json<JobImportResult>('/jobs/parse-screenshots', {
+        method: 'POST',
+        body: form,
+      })
+    },
 
     remove: (id: UUID) => json<void>(`/jobs/${id}`, { method: 'DELETE' }),
   },

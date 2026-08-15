@@ -13,8 +13,9 @@ import {
   Spinner,
   Textarea,
 } from '../components/ui'
+import { ImportNotice, ScreenshotImport } from '../components/ScreenshotImport'
 import { api } from '../lib/api'
-import type { Job, Resume, UUID } from '../lib/types'
+import type { Job, JobImportResult, Resume, UUID } from '../lib/types'
 
 // Only enforced when a description is actually supplied — it is optional now,
 // and only needed for tailoring.
@@ -158,6 +159,20 @@ function JobsPanel({
   const [form, setForm] = useState(EMPTY_JOB)
   const [busy, setBusy] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
+  const [imported, setImported] = useState<string | null>(null)
+
+  function applyImport(result: JobImportResult) {
+    // Prefill only; the user reviews before saving.
+    setForm({
+      title: result.title ?? '',
+      company: result.company ?? '',
+      location: result.location ?? '',
+      description: result.description ?? '',
+      apply_by: result.apply_by ?? '',
+    })
+    setImported(result.confidence)
+    setShowForm(true)
+  }
 
   const description = form.description.trim()
   // Empty is fine; a couple of words is a mistake worth catching before submit.
@@ -212,6 +227,9 @@ function JobsPanel({
 
       {showForm && (
         <form onSubmit={handleSubmit} className="mb-5 space-y-3.5">
+          <ScreenshotImport onParsed={applyImport} />
+          {imported && <ImportNotice confidence={imported} />}
+
           <Field label="Job title">
             <Input
               required

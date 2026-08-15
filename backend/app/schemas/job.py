@@ -72,3 +72,21 @@ class JobRead(BaseModel):
 
 class JobDetail(JobRead):
     description: str | None
+
+
+class JobImportResult(BaseModel):
+    """Fields read from screenshots, for the user to confirm.
+
+    Deliberately not a Job: nothing is saved until the user has seen it, because
+    extraction is fuzzy and a silently-wrong company name is worse than no
+    import at all.
+    """
+
+    title: str | None
+    company: str | None
+    location: str | None
+    apply_by: date | None
+    description: str | None
+    # "partial" means the description was visibly cut off — worth telling the
+    # user, since a truncated posting produces a weaker rewrite.
+    confidence: str

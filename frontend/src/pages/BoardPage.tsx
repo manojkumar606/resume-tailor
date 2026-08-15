@@ -12,8 +12,14 @@ import {
   Spinner,
   Textarea,
 } from '../components/ui'
+import { ImportNotice, ScreenshotImport } from '../components/ScreenshotImport'
 import { api } from '../lib/api'
-import type { Application, ApplicationStatus, QuickAddInput } from '../lib/types'
+import type {
+  Application,
+  ApplicationStatus,
+  JobImportResult,
+  QuickAddInput,
+} from '../lib/types'
 
 const COLUMNS: { status: ApplicationStatus; label: string }[] = [
   { status: 'saved', label: 'Saved' },
@@ -201,6 +207,18 @@ function QuickAddForm({ onAdded }: { onAdded: () => void }) {
   const [form, setForm] = useState<QuickAddInput>(EMPTY)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [imported, setImported] = useState<string | null>(null)
+
+  function applyImport(result: JobImportResult) {
+    setForm((current) => ({
+      ...current,
+      title: result.title ?? '',
+      company: result.company ?? '',
+      location: result.location ?? '',
+      apply_by: result.apply_by ?? '',
+    }))
+    setImported(result.confidence)
+  }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -243,6 +261,9 @@ function QuickAddForm({ onAdded }: { onAdded: () => void }) {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-3.5">
+        <ScreenshotImport onParsed={applyImport} compact />
+        {imported && <ImportNotice confidence={imported} />}
+
         <div className="grid gap-3.5 sm:grid-cols-2">
           <Field label="Job title">
             <Input

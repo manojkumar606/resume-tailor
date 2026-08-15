@@ -21,6 +21,12 @@ class LLMProvider(Protocol):
 
     def generate_json(self, *, system: str, prompt: str) -> dict[str, Any]: ...
 
+    def generate_json_from_images(
+        self, *, system: str, prompt: str, images: list[tuple[bytes, str]]
+    ) -> dict[str, Any]:
+        """Same contract, with images. Each entry is (bytes, mime type)."""
+        ...
+
 
 def _parse_json_response(text: str) -> dict[str, Any]:
     """Parse a model response that should be JSON.
@@ -57,23 +63,40 @@ class GeminiProvider:
         self._client = genai.Client(api_key=api_key)
         self.model_name = model
 
-    def generate_json(self, *, system: str, prompt: str) -> dict[str, Any]:
+    def _generate(self, *, system: str, contents: Any, temperature: float) -> dict[str, Any]:
         from google.genai import types
 
         try:
             response = self._client.models.generate_content(
                 model=self.model_name,
-                contents=prompt,
+                contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=system,
                     response_mime_type="application/json",
-                    temperature=0.4,
+                    temperature=temperature,
                 ),
             )
         except Exception as exc:
             raise LLMError(f"Gemini request failed: {exc}") from exc
 
         return _parse_json_response(response.text or "")
+
+    def generate_json(self, *, system: str, prompt: str) -> dict[str, Any]:
+        return self._generate(system=system, contents=prompt, temperature=0.4)
+
+    def generate_json_from_images(
+        self, *, system: str, prompt: str, images: list[tuple[bytes, str]]
+    ) -> dict[str, Any]:
+        from google.genai import types
+
+        # Temperature 0: this is transcription, not writing. Any creativity here
+        # shows up as invented job details.
+        parts = [
+            types.Part.from_bytes(data=data, mime_type=mime) for data, mime in images
+        ]
+        return self._generate(
+            system=system, contents=[*parts, prompt], temperature=0.0
+        )
 
 
 def get_llm_provider() -> LLMProvider:

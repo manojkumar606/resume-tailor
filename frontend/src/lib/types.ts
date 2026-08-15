@@ -76,6 +76,18 @@ export interface JobInput {
   apply_by?: string | null
 }
 
+/** Fields read from screenshots. Nothing is saved until the user confirms. */
+export interface JobImportResult {
+  title: string | null
+  company: string | null
+  location: string | null
+  /** ISO date, or null when none was visible. */
+  apply_by: string | null
+  description: string | null
+  /** "partial" means the description was visibly cut off. */
+  confidence: 'high' | 'partial' | 'unreadable'
+}
+
 export type ApplicationStatus =
   | 'saved'
   | 'applied'

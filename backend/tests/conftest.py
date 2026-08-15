@@ -206,6 +206,24 @@ DEFAULT_LLM_PAYLOAD = {
 }
 
 
+DEFAULT_IMPORT_PAYLOAD = {
+    "title": "Backend Engineer",
+    "company": "Northwind Labs",
+    "location": "Remote, India",
+    "apply_by": "2026-09-30",
+    "description": (
+        "We are hiring a Backend Engineer to build and scale our Python API "
+        "platform. You will design REST APIs with FastAPI and model data in "
+        "PostgreSQL."
+    ),
+    "confidence": "high",
+}
+
+# Content is irrelevant — the fake provider never decodes it — but a real PNG
+# signature keeps the fixture honest about what is being uploaded.
+PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+
+
 class FakeLLM:
     """Deterministic stand-in for a real provider.
 
@@ -217,6 +235,7 @@ class FakeLLM:
 
     def __init__(self, payload=None, error=None):
         self.payload = payload if payload is not None else dict(DEFAULT_LLM_PAYLOAD)
+        self.image_payload = dict(DEFAULT_IMPORT_PAYLOAD)
         self.error = error
         self.calls: list[dict] = []
 
@@ -225,6 +244,14 @@ class FakeLLM:
         if self.error is not None:
             raise self.error
         return self.payload
+
+    def generate_json_from_images(
+        self, *, system: str, prompt: str, images: list[tuple[bytes, str]]
+    ) -> dict:
+        self.calls.append({"system": system, "prompt": prompt, "images": images})
+        if self.error is not None:
+            raise self.error
+        return self.image_payload
 
 
 @pytest.fixture

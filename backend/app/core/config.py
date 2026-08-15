@@ -68,6 +68,12 @@ class Settings(BaseSettings):
     # flagged. Defined once here because the reminder job will use the same rule.
     STALE_APPLICATION_DAYS: int = 14
 
+    # --- Screenshot import ---
+    # A phone screenshot of a long posting only captures part of it, so several
+    # are allowed for one job. Bounded because each image costs tokens.
+    MAX_SCREENSHOTS: int = 4
+    MAX_SCREENSHOT_BYTES: int = 8 * 1024 * 1024
+
     # --- LLM ---
     LLM_PROVIDER: str = "gemini"
     GEMINI_API_KEY: str = ""
