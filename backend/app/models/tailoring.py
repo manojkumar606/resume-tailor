@@ -60,6 +60,17 @@ class Tailoring(UUIDMixin, TimestampMixin, Base):
     missing_keywords: Mapped[list[str] | None] = mapped_column(JSONVariant)
     changes: Mapped[list[str] | None] = mapped_column(JSONVariant)
     model: Mapped[str | None] = mapped_column(String(100))
+
+    # Lineage for the refine loop. Self-referential FK with no ORM relationship
+    # attached: nothing server-side needs to walk the chain, and a self-join
+    # mapping would be complexity for no gain.
+    refine_of_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("tailorings.id", ondelete="SET NULL"), index=True
+    )
+    # What the candidate said was wrong with the previous attempt. Stored so the
+    # version history can explain *why* each version exists.
+    feedback: Mapped[list[str] | None] = mapped_column(JSONVariant)
+    feedback_notes: Mapped[str | None] = mapped_column(Text)
     error: Mapped[str | None] = mapped_column(Text)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

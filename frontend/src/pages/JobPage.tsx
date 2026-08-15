@@ -11,6 +11,7 @@ import {
   Select,
   Spinner,
 } from '../components/ui'
+import { RefinePanel } from '../components/RefinePanel'
 import { ScoreDial } from '../components/ScoreDial'
 import { TailoringProgress } from '../components/TailoringProgress'
 import { api } from '../lib/api'
@@ -164,6 +165,27 @@ export function JobPage() {
     }
   }
 
+  /** Same endpoint as a fresh run, with the previous version and a critique. */
+  async function handleRefine(feedback: string[], notes: string) {
+    if (!selected) return
+    setError(null)
+    setTailoring(true)
+    try {
+      setSelected(
+        await api.tailorings.create(jobId, resumeId || undefined, {
+          refine_of: selected.id,
+          feedback,
+          feedback_notes: notes || null,
+        }),
+      )
+      setHistory(await api.tailorings.listForJob(jobId))
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setTailoring(false)
+    }
+  }
+
   async function handleDownload() {
     if (!selected) return
     setDownloading(true)
@@ -271,11 +293,18 @@ export function JobPage() {
       </Card>
 
       {selected ? (
-        <TailoringResult
-          tailoring={selected}
-          onDownload={handleDownload}
-          downloading={downloading}
-        />
+        <>
+          <TailoringResult
+            tailoring={selected}
+            onDownload={handleDownload}
+            downloading={downloading}
+          />
+          {/* Only a successful version can be revised — a failed run has no
+              text to hand back to the model. */}
+          {selected.status === 'succeeded' && (
+            <RefinePanel onRefine={handleRefine} busy={tailoring} />
+          )}
+        </>
       ) : (
         <Card>
           <EmptyState>
@@ -286,32 +315,65 @@ export function JobPage() {
 
       {history.length > 1 && (
         <Card>
-          <CardTitle>Previous runs</CardTitle>
-          <ul className="mt-3 divide-y divide-edge">
-            {history.map((run) => (
-              <li
-                key={run.id}
-                className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3"
-              >
-                <span className="text-sm text-ink-muted">
-                  {new Date(run.created_at).toLocaleString()}
-                </span>
-                <Pill tone={run.status === 'succeeded' ? 'quiet' : 'brand'}>
-                  {run.status}
-                </Pill>
-                {run.match_score !== null && (
-                  <span className="text-sm tabular-nums text-ink-faint">
-                    {Math.round(run.match_score)}/100
+          <CardTitle>Versions</CardTitle>
+          <p className="mt-1.5 text-sm text-ink-muted">
+            Refining never overwrites — every version stays here.
+          </p>
+
+          <ul className="mt-4 divide-y divide-edge">
+            {history.map((run, index) => (
+              <li key={run.id} className="py-3">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  {/* History is newest first, so the number counts down. */}
+                  <span className="text-sm font-medium text-ink">
+                    v{history.length - index}
                   </span>
-                )}
-                {run.status === 'succeeded' && run.id !== selected?.id && (
-                  <Button
-                    variant="ghost"
-                    className="ml-auto"
-                    onClick={async () => setSelected(await api.tailorings.get(run.id))}
-                  >
-                    View
-                  </Button>
+                  <span className="text-xs text-ink-faint">
+                    {new Date(run.created_at).toLocaleString()}
+                  </span>
+                  {run.status !== 'succeeded' && (
+                    <Pill tone="brand">{run.status}</Pill>
+                  )}
+                  {run.match_score !== null && (
+                    <span className="text-xs tabular-nums text-ink-faint">
+                      {Math.round(run.match_score)}/100
+                    </span>
+                  )}
+
+                  {run.id === selected?.id ? (
+                    <span className="ml-auto">
+                      <Pill tone="neutral">Showing</Pill>
+                    </span>
+                  ) : (
+                    run.status === 'succeeded' && (
+                      <Button
+                        variant="ghost"
+                        className="ml-auto"
+                        onClick={async () =>
+                          setSelected(await api.tailorings.get(run.id))
+                        }
+                      >
+                        View
+                      </Button>
+                    )
+                  )}
+                </div>
+
+                {/* Why this version exists, in the words that produced it. */}
+                {(run.feedback?.length || run.feedback_notes) && (
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs text-ink-faint">Asked to fix:</span>
+                    {run.feedback?.map((item) => (
+                      <Pill key={item} tone="quiet">
+                        {item}
+                      </Pill>
+                    ))}
+                    {run.feedback_notes && (
+                      <span className="text-xs text-ink-muted italic">
+                        “{run.feedback_notes}”
+                      </span>
+                    )}
+                  </div>
                 )}
               </li>
             ))}

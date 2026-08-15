@@ -13,7 +13,7 @@ from app.schemas.tailoring import TailoringCreate, TailoringDetail, TailoringRea
 from app.services.docx_writer import build_resume_docx
 from app.services.llm import LLMError, LLMProvider, get_llm_provider
 from app.services.storage import StorageError, build_key, get_storage
-from app.services.tailoring import tailor
+from app.services.tailoring import build_critique, tailor
 
 router = APIRouter(prefix="/tailorings", tags=["tailorings"])
 
@@ -87,12 +87,48 @@ def create_tailoring(
             status_code=422, detail="That resume has no extracted text to tailor"
         )
 
+    previous_attempt: str | None = None
+    critique: str | None = None
+
+    if payload.refine_of is not None:
+        previous = db.scalar(
+            select(Tailoring).where(
+                Tailoring.id == payload.refine_of,
+                Tailoring.user_id == current_user.id,
+            )
+        )
+        if previous is None:
+            raise HTTPException(status_code=404, detail="Tailoring not found")
+        # Revising against a different job's output would silently produce
+        # nonsense, so it is refused rather than quietly ignored.
+        if previous.job_id != job.id:
+            raise HTTPException(
+                status_code=400,
+                detail="That version belongs to a different job.",
+            )
+        if previous.status is not TailoringStatus.SUCCEEDED or not previous.tailored_text:
+            raise HTTPException(
+                status_code=409,
+                detail="That version did not succeed, so there is nothing to refine.",
+            )
+
+        critique = build_critique(payload.feedback, payload.feedback_notes)
+        if critique is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Say what was wrong with it — pick at least one problem.",
+            )
+        previous_attempt = previous.tailored_text
+
     row = Tailoring(
         user_id=current_user.id,
         job_id=job.id,
         resume_id=resume.id,
         status=TailoringStatus.RUNNING,
         model=getattr(provider, "model_name", None),
+        refine_of_id=payload.refine_of,
+        feedback=payload.feedback or None,
+        feedback_notes=payload.feedback_notes,
     )
     db.add(row)
     db.commit()
@@ -105,6 +141,8 @@ def create_tailoring(
             job_title=job.title,
             company=job.company,
             description=job.description,
+            previous_attempt=previous_attempt,
+            critique=critique,
         )
     except LLMError as exc:
         # Persist the failure rather than losing it: the user can see why, and

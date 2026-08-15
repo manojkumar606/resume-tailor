@@ -144,6 +144,17 @@ export interface Tailoring {
   error: string | null
   created_at: string
   completed_at: string | null
+  /** The version this one was a revision of, if any. */
+  refine_of_id: UUID | null
+  /** What the candidate said was wrong with that previous version. */
+  feedback: string[] | null
+  feedback_notes: string | null
+}
+
+export interface RefineInput {
+  refine_of: UUID
+  feedback: string[]
+  feedback_notes?: string | null
 }
 
 export interface TailoringDetail extends Tailoring {

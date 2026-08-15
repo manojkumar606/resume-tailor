@@ -25,6 +25,10 @@ Hard rules:
   where the original already contains a number.
 - Keep the tone professional and concise.
 
+When revising a previous attempt, treat the candidate's complaints as
+instructions and address every one of them. The rules above still hold — a
+request to sound stronger is not permission to invent anything.
+
 Return ONLY a JSON object with exactly these keys:
 {
   "tailored_resume": "the full rewritten resume as plain text, one line per
@@ -48,13 +52,40 @@ class TailoringResult:
     changes: list[str]
 
 
-def build_prompt(resume_text: str, job_title: str, company: str, description: str) -> str:
-    return (
-        f"JOB TITLE: {job_title}\n"
-        f"COMPANY: {company}\n\n"
-        f"JOB DESCRIPTION:\n{description[:MAX_JOB_DESCRIPTION_CHARS]}\n\n"
-        f"CANDIDATE'S CURRENT RESUME:\n{resume_text[:MAX_RESUME_CHARS]}"
-    )
+# A revision carries the previous attempt as well, so the cap matters more here.
+MAX_PREVIOUS_ATTEMPT_CHARS = 20000
+
+
+def build_prompt(
+    resume_text: str,
+    job_title: str,
+    company: str,
+    description: str,
+    previous_attempt: str | None = None,
+    critique: str | None = None,
+) -> str:
+    parts = [
+        f"JOB TITLE: {job_title}",
+        f"COMPANY: {company}",
+        f"\nJOB DESCRIPTION:\n{description[:MAX_JOB_DESCRIPTION_CHARS]}",
+        f"\nCANDIDATE'S CURRENT RESUME:\n{resume_text[:MAX_RESUME_CHARS]}",
+    ]
+
+    if previous_attempt and critique:
+        parts.append(
+            f"\nYOUR PREVIOUS ATTEMPT:\n{previous_attempt[:MAX_PREVIOUS_ATTEMPT_CHARS]}"
+        )
+        parts.append(f"\nWHAT THE CANDIDATE SAYS IS WRONG WITH IT:\n{critique}")
+        # Restated after the critique, not only in the system prompt: the
+        # complaints are user-supplied text, and "make me sound stronger" must
+        # not read as licence to invent.
+        parts.append(
+            "\nProduce a new version that addresses every point above. Do not "
+            "add any experience, skill or qualification the candidate does not "
+            "already have."
+        )
+
+    return "\n".join(parts)
 
 
 def _coerce_str_list(value: Any) -> list[str]:
@@ -92,6 +123,18 @@ def parse_result(payload: dict[str, Any]) -> TailoringResult:
     )
 
 
+def build_critique(feedback: list[str], notes: str | None) -> str | None:
+    """Turn the chips and free text into one instruction block.
+
+    Chips exist because a blank "what's wrong?" box makes people freeze, and
+    because they give the model unambiguous, consistent wording to act on.
+    """
+    lines = [f"- {item}" for item in feedback]
+    if notes and notes.strip():
+        lines.append(f"- In their own words: {notes.strip()}")
+    return "\n".join(lines) if lines else None
+
+
 def tailor(
     provider: LLMProvider,
     *,
@@ -99,7 +142,11 @@ def tailor(
     job_title: str,
     company: str,
     description: str,
+    previous_attempt: str | None = None,
+    critique: str | None = None,
 ) -> TailoringResult:
-    prompt = build_prompt(resume_text, job_title, company, description)
+    prompt = build_prompt(
+        resume_text, job_title, company, description, previous_attempt, critique
+    )
     payload = provider.generate_json(system=TAILOR_SYSTEM, prompt=prompt)
     return parse_result(payload)

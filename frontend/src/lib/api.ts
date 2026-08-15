@@ -9,6 +9,7 @@ import type {
   Resume,
   ResumeDetail,
   QuickAddInput,
+  RefineInput,
   Tailoring,
   TailoringDetail,
   User,
@@ -316,10 +317,15 @@ export const api = {
 
     get: (id: UUID) => json<TailoringDetail>(`/tailorings/${id}`),
 
-    create: (jobId: UUID, resumeId?: UUID) =>
+    /** Pass `refine` to revise a previous version rather than start fresh. */
+    create: (jobId: UUID, resumeId?: UUID, refine?: RefineInput) =>
       json<TailoringDetail>('/tailorings', {
         method: 'POST',
-        body: JSON.stringify({ job_id: jobId, resume_id: resumeId ?? null }),
+        body: JSON.stringify({
+          job_id: jobId,
+          resume_id: resumeId ?? null,
+          ...(refine ?? {}),
+        }),
       }),
 
     remove: (id: UUID) => json<void>(`/tailorings/${id}`, { method: 'DELETE' }),
