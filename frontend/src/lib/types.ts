@@ -14,6 +14,8 @@ export interface User {
   is_active: boolean
   /** False until the emailed link is redeemed. Gates every route but /auth. */
   is_verified: boolean
+  /** Daily digest opt-out. Never affects sign-in codes. */
+  reminders_enabled: boolean
   created_at: string
 }
 

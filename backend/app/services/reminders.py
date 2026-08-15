@@ -19,6 +19,7 @@ from app.core.config import settings
 from app.models.application import Application, ApplicationStatus
 from app.models.user import User
 from app.services.email import EmailError, EmailProvider
+from app.services.unsubscribe import unsubscribe_url
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +65,9 @@ def collect_digests(db: Session, today: date | None = None) -> list[UserDigest]:
     digests: dict[str, UserDigest] = {}
 
     for row in rows:
-        if not row.user.is_active:
+        # Opted out, or disabled. Reminders are optional; login codes are not,
+        # and this flag deliberately does not touch those.
+        if not row.user.is_active or not row.user.reminders_enabled:
             continue
 
         digest = digests.setdefault(str(row.user_id), UserDigest(user=row.user))
@@ -134,11 +137,23 @@ def _render(digest: UserDigest) -> tuple[str, str, str]:
         text_lines.append("")
         html_parts.append("</ul>")
 
-    text_lines += [f"Your board: {board_url}", "", "— Resume Tailor"]
+    stop = unsubscribe_url(digest.user.id)
+    text_lines += [
+        f"Your board: {board_url}",
+        "",
+        f"Stop these reminders: {stop}",
+        "",
+        "— Resume Tailor",
+    ]
     html_parts.append(
         f'<p><a href="{board_url}" style="display:inline-block;background:#e5162a;'
         'color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">'
-        "Open your board</a></p></div>"
+        "Open your board</a></p>"
+        # In every digest, because the alternative to an easy unsubscribe is a
+        # spam complaint, and that harms delivery of the login codes too.
+        f'<p style="color:#666;font-size:12px">Do not want these? '
+        f'<a href="{stop}" style="color:#666">Turn reminders off</a>. '
+        "Sign-in codes are unaffected.</p></div>"
     )
 
     return subject, "".join(html_parts), "\n".join(text_lines)

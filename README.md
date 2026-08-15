@@ -230,12 +230,46 @@ stamped so a daily job cannot nag about the same one every morning. The stamp is
 written only on a successful send, so a failed email is retried next run rather
 than silently skipped for a week.
 
-The endpoint authenticates with a shared secret in `X-Cron-Secret`, compared in
+### Opting out
+
+Reminders default to **on** — a retention feature nobody discovers does nothing.
+Turning them off is one toggle in Settings, and every digest carries an
+unsubscribe link that works straight from the inbox with no session.
+
+That link matters more than it looks: the digest and the sign-in codes go out
+from the same Brevo sender, so a spam complaint degrades delivery of the codes
+people need to log in at all. An easy unsubscribe is what prevents that.
+
+The link opens a page with a button rather than unsubscribing on load — mail
+clients and security scanners prefetch links, and a bare state-changing GET
+would opt people out who never clicked anything. The token is a stateless HMAC:
+nothing to clean up, and all it can do is turn reminders off.
+
+The flag never touches sign-in codes. Reminders are optional; codes are how
+anyone gets in.
+
+### The endpoint
+
+It authenticates with a shared secret in `X-Cron-Secret`, compared in
 constant time. An unset `CRON_SECRET` disables it outright — a blank secret
 matching a blank header would leave it open.
 
 Setup: put the same value in Render's environment and in the repository's
 **Settings → Secrets and variables → Actions → `CRON_SECRET`**.
+
+## Your data
+
+Settings offers a CSV of every tracked application, and account deletion.
+
+Both matter more here than in most apps: job hunting is usually done while
+employed, and being able to leave with your data is a large part of why anyone
+trusts the thing with a resume in the first place.
+
+Deletion removes rows in dependency order rather than leaning on the cascade —
+`tailorings.resume_id` is `ON DELETE RESTRICT`, so a cascade reaching resumes
+first would abort the whole delete. Stored files are removed afterwards on a
+best-effort basis: the rows are already gone, and an orphaned blob is far less
+harmful than a delete the user cannot complete.
 
 ## Deployment
 

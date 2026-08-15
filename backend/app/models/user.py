@@ -25,6 +25,12 @@ class User(UUIDMixin, TimestampMixin, Base):
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Gates every route except /auth/*. See api/deps.get_verified_user.
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Opt-out, not opt-in: a retention feature nobody discovers does nothing.
+    # Scoped to the daily digest only — login codes are transactional and are
+    # never suppressed by this.
+    reminders_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
 
     resumes: Mapped[list["Resume"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"

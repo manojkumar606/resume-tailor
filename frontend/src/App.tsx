@@ -7,6 +7,8 @@ import { AuthPage } from './pages/AuthPage'
 import { BoardPage } from './pages/BoardPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { LandingPage } from './pages/LandingPage'
+import { SettingsPage } from './pages/SettingsPage'
+import { UnsubscribePage } from './pages/UnsubscribePage'
 import { JobPage } from './pages/JobPage'
 
 export default function App() {
@@ -15,6 +17,9 @@ export default function App() {
       <Routes>
         {/* Public pitch. Redirects signed-in visitors to the app itself. */}
         <Route path="/" element={<LandingPage />} />
+
+        {/* Public: reached from a link in an email, with no session. */}
+        <Route path="/unsubscribe" element={<UnsubscribePage />} />
 
         <Route path="/login" element={<AuthPage mode="login" />} />
         <Route path="/signup" element={<AuthPage mode="signup" />} />
@@ -31,6 +36,7 @@ export default function App() {
         >
           <Route path="/app" element={<DashboardPage />} />
           <Route path="/board" element={<BoardPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="/jobs/:jobId" element={<JobPage />} />
         </Route>
 

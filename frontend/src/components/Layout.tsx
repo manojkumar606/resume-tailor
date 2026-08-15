@@ -50,6 +50,9 @@ export function Layout() {
             <NavLink to="/board" className={navClasses}>
               Board
             </NavLink>
+            <NavLink to="/settings" className={navClasses}>
+              Settings
+            </NavLink>
           </nav>
 
           <div className="ml-auto flex min-w-0 items-center gap-3">

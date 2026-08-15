@@ -248,6 +248,27 @@ export const api = {
       }),
 
     me: () => json<User>('/auth/me'),
+
+    /** Turn reminders off from an emailed link. Needs no session. */
+    unsubscribe: (token: string) =>
+      json<{ detail: string }>('/auth/unsubscribe', {
+        method: 'POST',
+        body: JSON.stringify({ token }),
+      }),
+  },
+
+  account: {
+    update: (patch: { full_name?: string | null; reminders_enabled?: boolean }) =>
+      json<User>('/me', { method: 'PATCH', body: JSON.stringify(patch) }),
+
+    exportCsv: () => download('/me/export', 'applications.csv'),
+
+    /** Irreversible. The email is typed back as confirmation. */
+    remove: (confirmEmail: string) =>
+      json<void>('/me', {
+        method: 'DELETE',
+        body: JSON.stringify({ confirm_email: confirmEmail }),
+      }),
   },
 
   resumes: {

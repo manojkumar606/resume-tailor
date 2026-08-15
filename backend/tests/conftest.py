@@ -262,6 +262,18 @@ def fake_llm(client):
     app.dependency_overrides.pop(get_llm_provider, None)
 
 
+CRON_SECRET = "test-cron-secret"
+
+
+@pytest.fixture
+def cron(monkeypatch):
+    """Enable the reminder endpoint and return the header that authenticates it."""
+    from app.core import config
+
+    monkeypatch.setattr(config.settings, "CRON_SECRET", CRON_SECRET)
+    return {"X-Cron-Secret": CRON_SECRET}
+
+
 @pytest.fixture
 def job_payload():
     return {

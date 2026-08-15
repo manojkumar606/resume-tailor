@@ -34,7 +34,27 @@ class UserRead(BaseModel):
     full_name: str | None
     is_active: bool
     is_verified: bool
+    reminders_enabled: bool
     created_at: datetime
+
+
+class UserUpdate(BaseModel):
+    full_name: str | None = Field(default=None, max_length=200)
+    reminders_enabled: bool | None = None
+
+
+class AccountDeleteRequest(BaseModel):
+    """Typing the address back is the confirmation.
+
+    A destructive, irreversible action needs more friction than one click, and
+    an "are you sure?" dialog is one click.
+    """
+
+    confirm_email: EmailStr
+
+
+class UnsubscribeRequest(BaseModel):
+    token: str = Field(min_length=1, max_length=200)
 
 
 class CodeSent(BaseModel):

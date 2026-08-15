@@ -9,18 +9,6 @@ from app.models.application import Application
 RUN = "/api/v1/internal/reminders/run"
 QUICK = "/api/v1/applications/quick"
 
-SECRET = "test-cron-secret"
-
-
-@pytest.fixture
-def cron(monkeypatch):
-    """Enable the endpoint and return the header that authenticates it."""
-    from app.core import config
-
-    monkeypatch.setattr(config.settings, "CRON_SECRET", SECRET)
-    return {"X-Cron-Secret": SECRET}
-
-
 def _card(client, headers, **extra):
     payload = {"title": "Backend Engineer", "company": "Northwind", **extra}
     r = client.post(QUICK, headers=headers, json=payload)

@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
+    account,
     applications,
     auth,
     health,
@@ -18,3 +19,4 @@ api_router.include_router(jobs.router)
 api_router.include_router(tailorings.router)
 api_router.include_router(applications.router)
 api_router.include_router(reminders.router)
+api_router.include_router(account.router)

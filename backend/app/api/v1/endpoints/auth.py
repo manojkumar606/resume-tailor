@@ -13,11 +13,13 @@ from app.schemas.user import (
     CodeResendRequest,
     CodeSent,
     CodeSubmission,
+    UnsubscribeRequest,
     UserCreate,
     UserLogin,
     UserRead,
 )
 from app.services.email import EmailError
+from app.services.unsubscribe import InvalidUnsubscribeToken, read_token
 from app.services.email_codes import (
     CodeError,
     consume_code,
@@ -180,6 +182,33 @@ def resend_code(payload: CodeResendRequest, db: DbSession, mailer: Mailer) -> di
     purpose = CodePurpose.SIGNUP if not user.is_verified else CodePurpose.LOGIN
     _issue_and_send(db, mailer, user, purpose)
     return generic
+
+
+@router.post("/unsubscribe")
+def unsubscribe(payload: UnsubscribeRequest, db: DbSession) -> dict:
+    """Turn reminders off from a link in an email, with no session.
+
+    Unauthenticated on purpose: somebody annoyed at 7am will not log in to find
+    a toggle, they will press "mark as spam" — and that harms delivery of the
+    login codes, which go out from the same sender.
+
+    A POST rather than a GET on the link itself, because mail clients and
+    security scanners prefetch links and would otherwise unsubscribe people who
+    never clicked anything.
+    """
+    try:
+        user_id = read_token(payload.token)
+    except InvalidUnsubscribeToken as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    user = db.get(User, user_id)
+    # Same response whether or not the account exists, so the endpoint cannot be
+    # used to check which ids are real.
+    if user is not None:
+        user.reminders_enabled = False
+        db.commit()
+
+    return {"detail": "Reminder emails are off. Sign-in codes are unaffected."}
 
 
 @router.get("/me", response_model=UserRead)
