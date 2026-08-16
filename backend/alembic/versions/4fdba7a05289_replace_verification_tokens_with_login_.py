@@ -58,9 +58,10 @@ def downgrade() -> None:
     op.create_index('ix_email_verification_tokens_token_hash', 'email_verification_tokens', ['token_hash'], unique=True)
     op.drop_index(op.f('ix_email_codes_user_id'), table_name='email_codes')
     op.drop_index(op.f('ix_email_codes_code_hash'), table_name='email_codes')
-    # Hand-added: autogenerate creates the enum type on upgrade but never drops
-    # it, so a downgrade followed by an upgrade would fail with
-    # "type code_purpose already exists".
-    sa.Enum(name='code_purpose').drop(op.get_bind(), checkfirst=True)
     op.drop_table('email_codes')
+    # Hand-added, and it has to come after the table: autogenerate creates the
+    # enum on upgrade but never drops it, so a downgrade then upgrade would fail
+    # with "type code_purpose already exists". Dropping it while email_codes
+    # still had a column of that type failed the other way round.
+    sa.Enum(name='code_purpose').drop(op.get_bind(), checkfirst=True)
     # ### end Alembic commands ###
