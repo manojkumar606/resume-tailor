@@ -16,6 +16,8 @@ import { ImportNotice, ScreenshotImport } from '../components/ScreenshotImport'
 import { api } from '../lib/api'
 import type {
   Application,
+  ApplicationPatch,
+  ApplicationSource,
   ApplicationStatus,
   JobImportResult,
   QuickAddInput,
@@ -29,8 +31,27 @@ const COLUMNS: { status: ApplicationStatus; label: string }[] = [
   { status: 'rejected', label: 'Rejected' },
 ]
 
+const SOURCES: { value: ApplicationSource; label: string }[] = [
+  { value: 'unknown', label: 'Not recorded' },
+  { value: 'referral', label: 'Referral' },
+  { value: 'job_board', label: 'Job board' },
+  { value: 'company_site', label: 'Company site' },
+  { value: 'recruiter', label: 'Recruiter' },
+  { value: 'other', label: 'Other' },
+]
+
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Something went wrong.'
+}
+
+/** Datetime-local wants "YYYY-MM-DDTHH:mm" with no zone or seconds. */
+function toLocalInput(iso: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+    d.getHours(),
+  )}:${pad(d.getMinutes())}`
 }
 
 // ── Card badges ──────────────────────────────────────────────────────────────
@@ -56,6 +77,7 @@ function ApplicationCard({
   busy,
   dragging,
   onMove,
+  onPatch,
   onSaveNotes,
   onDelete,
   onDragStart,
@@ -65,6 +87,7 @@ function ApplicationCard({
   busy: boolean
   dragging: boolean
   onMove: (status: ApplicationStatus) => void
+  onPatch: (patch: ApplicationPatch) => void
   onSaveNotes: (notes: string | null) => void
   onDelete: () => void
   onDragStart: (event: React.DragEvent) => void
@@ -105,13 +128,48 @@ function ApplicationCard({
 
       {(application.is_stale ||
         application.days_until_deadline !== null ||
+        application.interview_at ||
         tailoring) && (
         <div className="mt-2.5 flex flex-wrap gap-1.5">
+          {application.interview_at && (
+            <Pill tone="neutral">
+              Interview{' '}
+              {new Date(application.interview_at).toLocaleDateString(undefined, {
+                day: 'numeric',
+                month: 'short',
+              })}
+            </Pill>
+          )}
           {application.is_stale && (
             <Pill tone="brand">No reply in {application.days_since_update}d</Pill>
           )}
           <DeadlineBadge days={application.days_until_deadline} />
           <ScoreBadge score={tailoring?.match_score} />
+        </div>
+      )}
+
+      {application.needs_apply_prompt && (
+        <div className="mt-2.5 rounded-lg bg-brand-wash p-2.5 ring-1 ring-brand/30">
+          <p className="text-xs text-ink">
+            You tailored a resume for this. Did you apply?
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button
+              disabled={busy}
+              onClick={() => onMove('applied')}
+              className="min-h-9 px-3 text-xs"
+            >
+              Yes, applied
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={busy}
+              onClick={() => onPatch({ dismiss_apply_prompt: true })}
+              className="min-h-9 px-3 text-xs"
+            >
+              Not yet
+            </Button>
+          </div>
         </div>
       )}
 
@@ -142,6 +200,45 @@ function ApplicationCard({
               </ul>
             </div>
           )}
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-xs text-ink-faint">
+                How did you apply?
+              </span>
+              <Select
+                value={application.source}
+                disabled={busy}
+                onChange={(e) =>
+                  onPatch({ source: e.target.value as ApplicationSource })
+                }
+                className="min-h-9 py-1.5 text-xs"
+              >
+                {SOURCES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-xs text-ink-faint">Interview</span>
+              <Input
+                type="datetime-local"
+                disabled={busy}
+                value={toLocalInput(application.interview_at)}
+                onChange={(e) =>
+                  onPatch({
+                    interview_at: e.target.value
+                      ? new Date(e.target.value).toISOString()
+                      : null,
+                  })
+                }
+                className="min-h-9 py-1.5 text-xs"
+              />
+            </label>
+          </div>
 
           <label className="block">
             <span className="mb-1 block text-xs text-ink-faint">Notes</span>
@@ -232,6 +329,7 @@ function QuickAddForm({ onAdded }: { onAdded: () => void }) {
         source_url: form.source_url?.trim() || null,
         apply_by: form.apply_by || null,
         status: form.status ?? 'saved',
+        applied_via: form.applied_via ?? 'unknown',
       })
       setForm(EMPTY)
       setOpen(false)
@@ -315,6 +413,23 @@ function QuickAddForm({ onAdded }: { onAdded: () => void }) {
               ))}
             </Select>
           </Field>
+          <Field label="How did you apply?" hint="Optional">
+            <Select
+              value={form.applied_via ?? 'unknown'}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  applied_via: e.target.value as ApplicationSource,
+                })
+              }
+            >
+              {SOURCES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
         </div>
 
         <p className="text-xs text-ink-faint">
@@ -366,6 +481,13 @@ function StatStrip({ applications }: { applications: Application[] }) {
   }
   const topGap = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]
 
+  // Referral vs cold application is the largest single lever most people have,
+  // and nobody knows their own numbers until they are counted.
+  const referrals = submitted.filter((a) => a.source === 'referral')
+  const referralHeard = referrals.filter(
+    (a) => a.status === 'interviewing' || a.status === 'offer',
+  )
+
   const stats: { label: string; value: string; hint?: string }[] = [
     { label: 'Applied', value: String(submitted.length) },
     {
@@ -379,6 +501,15 @@ function StatStrip({ applications }: { applications: Application[] }) {
       hint: 'No movement in 14 days',
     },
     {
+      label: 'Via referral',
+      value: referrals.length
+        ? `${Math.round((referralHeard.length / referrals.length) * 100)}%`
+        : '—',
+      hint: referrals.length
+        ? `${referrals.length} of ${submitted.length} applications`
+        : 'Record how you applied to compare',
+    },
+    {
       label: 'Most common gap',
       value: topGap ? topGap[0] : '—',
       hint: topGap
@@ -388,7 +519,7 @@ function StatStrip({ applications }: { applications: Application[] }) {
   ]
 
   return (
-    <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
       {stats.map((stat) => (
         <div
           key={stat.label}
@@ -404,6 +535,67 @@ function StatStrip({ applications }: { applications: Application[] }) {
         </div>
       ))}
     </dl>
+  )
+}
+
+function GapsPanel({ applications }: { applications: Application[] }) {
+  const [open, setOpen] = useState(false)
+
+  const counts = new Map<string, number>()
+  for (const a of applications) {
+    for (const gap of a.tailoring?.missing_keywords ?? []) {
+      counts.set(gap, (counts.get(gap) ?? 0) + 1)
+    }
+  }
+
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10)
+  if (ranked.length === 0) return null
+
+  const most = ranked[0][1]
+  const tailored = applications.filter((a) => a.tailoring).length
+
+  return (
+    <Card>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex min-h-11 w-full items-center justify-between gap-3 text-left"
+        aria-expanded={open}
+      >
+        <div>
+          <CardTitle>What to learn next</CardTitle>
+          <p className="mt-1 text-sm text-ink-muted">
+            The requirements that keep coming up across {tailored} tailored{' '}
+            {tailored === 1 ? 'role' : 'roles'}, that your resume does not cover.
+          </p>
+        </div>
+        <span aria-hidden className="shrink-0 text-sm text-ink-faint">
+          {open ? 'Hide' : 'Show'}
+        </span>
+      </button>
+
+      {open && (
+        <ul className="mt-4 space-y-2.5">
+          {ranked.map(([gap, count]) => (
+            <li key={gap} className="flex items-center gap-3">
+              <span className="w-40 shrink-0 truncate text-sm text-ink" title={gap}>
+                {gap}
+              </span>
+              {/* Bar widths are relative to the most common gap, so the shape of
+                  the distribution is readable even with only a few roles. */}
+              <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-raised">
+                <span
+                  className="block h-full rounded-full bg-brand"
+                  style={{ width: `${(count / most) * 100}%` }}
+                />
+              </span>
+              <span className="w-16 shrink-0 text-right text-xs tabular-nums text-ink-faint">
+                {count} {count === 1 ? 'role' : 'roles'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   )
 }
 
@@ -451,6 +643,21 @@ export function BoardPage() {
       )
     } catch (err) {
       setApplications(previous)
+      setError(errorMessage(err))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function patch(application: Application, changes: ApplicationPatch) {
+    setBusyId(application.id)
+    setError(null)
+    try {
+      const updated = await api.applications.update(application.id, changes)
+      setApplications((current) =>
+        current.map((a) => (a.id === updated.id ? updated : a)),
+      )
+    } catch (err) {
       setError(errorMessage(err))
     } finally {
       setBusyId(null)
@@ -521,6 +728,8 @@ export function BoardPage() {
 
       {applications.length > 0 && <StatStrip applications={applications} />}
 
+      {applications.length > 0 && <GapsPanel applications={applications} />}
+
       {applications.length === 0 ? (
         <Card>
           <p className="py-6 text-center text-sm text-ink-muted">
@@ -563,6 +772,7 @@ export function BoardPage() {
                       busy={busyId === application.id}
                       dragging={draggingId === application.id}
                       onMove={(status) => void move(application, status)}
+                      onPatch={(changes) => void patch(application, changes)}
                       onSaveNotes={(notes) => void saveNotes(application, notes)}
                       onDelete={() => void remove(application)}
                       onDragStart={(e) => {

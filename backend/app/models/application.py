@@ -14,6 +14,22 @@ if TYPE_CHECKING:
     from app.models.user import User
 
 
+class ApplicationSource(str, enum.Enum):
+    """How the application was submitted.
+
+    Worth recording because the conversion difference between a referral and a
+    cold application is enormous, and nobody knows their own numbers until they
+    are counted.
+    """
+
+    UNKNOWN = "unknown"
+    REFERRAL = "referral"
+    JOB_BOARD = "job_board"
+    COMPANY_SITE = "company_site"
+    RECRUITER = "recruiter"
+    OTHER = "other"
+
+
 class ApplicationStatus(str, enum.Enum):
     SAVED = "saved"
     APPLIED = "applied"
@@ -45,6 +61,19 @@ class Application(UUIDMixin, TimestampMixin, Base):
     )
     applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str | None] = mapped_column(Text)
+
+    source: Mapped[ApplicationSource] = mapped_column(
+        Enum(ApplicationSource, name="application_source"),
+        default=ApplicationSource.UNKNOWN,
+        nullable=False,
+    )
+    # The date that matters more than the deadline once you are talking to them.
+    interview_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set when the user answers "not yet" to "did you apply?", so the prompt
+    # stops rather than greeting them on every visit.
+    apply_prompt_dismissed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
     # When this card last triggered a reminder email. Without it the daily job
     # would nag about the same stale application every single morning.
     reminded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

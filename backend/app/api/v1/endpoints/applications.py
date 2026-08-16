@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import select
@@ -7,9 +7,9 @@ from sqlalchemy.orm import joinedload
 
 from app.api.deps import DbSession, VerifiedUser
 from app.core.config import settings
-from app.models.application import Application, ApplicationStatus
+from app.models.application import Application, ApplicationSource, ApplicationStatus
 from app.models.job import Job
-from app.models.tailoring import Tailoring
+from app.models.tailoring import Tailoring, TailoringStatus
 from app.schemas.application import (
     ApplicationCreate,
     ApplicationQuickCreate,
@@ -34,6 +34,33 @@ def _as_aware(value: datetime) -> datetime:
     return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
+# Long enough that the prompt does not appear while they are still reading the
+# rewrite, short enough to catch them on the next visit.
+APPLY_PROMPT_AFTER_HOURS = 12
+
+
+def _needs_apply_prompt(application: Application) -> bool:
+    """Whether to ask "did you apply?".
+
+    Only for a card still in Saved that has a finished tailoring: the app knows
+    a resume was prepared for this role, so a board still showing Saved is
+    probably out of date rather than deliberate. Dismissing it is permanent —
+    being asked twice about the same thing is what makes prompts hated.
+    """
+    if application.status is not ApplicationStatus.SAVED:
+        return False
+    if application.apply_prompt_dismissed_at is not None:
+        return False
+
+    tailoring = application.tailoring
+    if tailoring is None or tailoring.status is not TailoringStatus.SUCCEEDED:
+        return False
+
+    completed = tailoring.completed_at or tailoring.created_at
+    age = datetime.now(UTC) - _as_aware(completed)
+    return age >= timedelta(hours=APPLY_PROMPT_AFTER_HOURS)
+
+
 def _serialize(application: Application) -> ApplicationRead:
     """Attach the derived fields a board card needs."""
     now = datetime.now(UTC)
@@ -56,11 +83,14 @@ def _serialize(application: Application) -> ApplicationRead:
         notes=application.notes,
         created_at=application.created_at,
         updated_at=application.updated_at,
+        source=application.source,
+        interview_at=application.interview_at,
         job=application.job,
         tailoring=application.tailoring,
         is_stale=is_stale,
         days_since_update=days_since_update,
         days_until_deadline=days_until_deadline,
+        needs_apply_prompt=_needs_apply_prompt(application),
     )
 
 
@@ -123,6 +153,7 @@ def track_job(
         status=payload.status,
         notes=payload.notes,
         applied_at=payload.applied_at,
+        source=payload.source,
     )
     _stamp_applied_at(application, payload.status)
 
@@ -161,6 +192,7 @@ def quick_add(
         job_id=job.id,
         status=payload.status,
         notes=payload.notes,
+        source=payload.applied_via,
     )
     _stamp_applied_at(application, payload.status)
 
@@ -224,6 +256,10 @@ def update_application(
 
     if "status" in fields and fields["status"] is not None:
         _stamp_applied_at(application, fields["status"])
+
+    # Not a column: answering "not yet" records when, so the prompt stops.
+    if fields.pop("dismiss_apply_prompt", None):
+        application.apply_prompt_dismissed_at = datetime.now(UTC)
 
     for field, value in fields.items():
         setattr(application, field, value)

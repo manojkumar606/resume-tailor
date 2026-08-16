@@ -97,6 +97,14 @@ export type ApplicationStatus =
   | 'offer'
   | 'rejected'
 
+export type ApplicationSource =
+  | 'unknown'
+  | 'referral'
+  | 'job_board'
+  | 'company_site'
+  | 'recruiter'
+  | 'other'
+
 export interface ApplicationJob {
   id: UUID
   title: string
@@ -120,6 +128,8 @@ export interface Application {
   notes: string | null
   created_at: string
   updated_at: string
+  source: ApplicationSource
+  interview_at: string | null
   job: ApplicationJob
   tailoring: ApplicationTailoring | null
   /** Server-computed so the threshold lives in one place. */
@@ -127,6 +137,8 @@ export interface Application {
   days_since_update: number
   /** Negative once the deadline has passed; null when none is set. */
   days_until_deadline: number | null
+  /** A resume was tailored for this role but the card still says Saved. */
+  needs_apply_prompt: boolean
 }
 
 export interface QuickAddInput {
@@ -138,12 +150,18 @@ export interface QuickAddInput {
   description?: string | null
   status?: ApplicationStatus
   notes?: string | null
+  /** How it was submitted. Named apart from the job's own `source`. */
+  applied_via?: ApplicationSource
 }
 
 export interface ApplicationPatch {
   status?: ApplicationStatus
   notes?: string | null
   tailoring_id?: UUID | null
+  source?: ApplicationSource
+  interview_at?: string | null
+  /** Answering "not yet" to the apply prompt. */
+  dismiss_apply_prompt?: boolean
 }
 
 export type TailoringStatus = 'pending' | 'running' | 'succeeded' | 'failed'

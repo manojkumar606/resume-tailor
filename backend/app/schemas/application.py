@@ -3,7 +3,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.models.application import ApplicationStatus
+from app.models.application import ApplicationSource, ApplicationStatus
 from app.models.job import JobSource
 from app.schemas.job import clean_description
 
@@ -45,6 +45,7 @@ class ApplicationCreate(BaseModel):
     tailoring_id: uuid.UUID | None = None
     notes: str | None = Field(default=None, max_length=10_000)
     applied_at: datetime | None = None
+    source: ApplicationSource = ApplicationSource.UNKNOWN
 
 
 class ApplicationQuickCreate(BaseModel):
@@ -62,6 +63,7 @@ class ApplicationQuickCreate(BaseModel):
     description: str | None = Field(default=None, max_length=50_000)
     status: ApplicationStatus = ApplicationStatus.SAVED
     notes: str | None = Field(default=None, max_length=10_000)
+    applied_via: ApplicationSource = ApplicationSource.UNKNOWN
     source: JobSource = JobSource.MANUAL
 
     _check_description = field_validator("description")(clean_description)
@@ -73,6 +75,11 @@ class ApplicationUpdate(BaseModel):
     # Settable so a user can correct the date the server stamped for them.
     applied_at: datetime | None = None
     tailoring_id: uuid.UUID | None = None
+    source: ApplicationSource | None = None
+    interview_at: datetime | None = None
+    # Answering "not yet" to the apply prompt. A field rather than its own
+    # endpoint, so dismissing is the same round trip as any other card edit.
+    dismiss_apply_prompt: bool | None = None
 
 
 class ApplicationRead(BaseModel):
@@ -85,6 +92,9 @@ class ApplicationRead(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    source: ApplicationSource
+    interview_at: datetime | None
+
     job: ApplicationJob
     tailoring: ApplicationTailoring | None
 
@@ -93,3 +103,7 @@ class ApplicationRead(BaseModel):
     is_stale: bool
     days_since_update: int
     days_until_deadline: int | None
+    # True when a resume was tailored for this role but it is still sitting in
+    # Saved — the app knows a version was prepared, so it can ask rather than
+    # leave the board quietly wrong.
+    needs_apply_prompt: bool
