@@ -10,6 +10,7 @@ import {
   Pill,
   Select,
   Spinner,
+  Textarea,
 } from '../components/ui'
 import { RefinePanel } from '../components/RefinePanel'
 import { ScoreDial } from '../components/ScoreDial'
@@ -118,6 +119,8 @@ export function JobPage() {
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showDescription, setShowDescription] = useState(false)
+  const [editingDescription, setEditingDescription] = useState<string | null>(null)
+  const [savingDescription, setSavingDescription] = useState(false)
 
   const load = useCallback(async () => {
     setError(null)
@@ -183,6 +186,23 @@ export function JobPage() {
       setError(errorMessage(err))
     } finally {
       setTailoring(false)
+    }
+  }
+
+  async function saveDescription() {
+    if (editingDescription === null) return
+    setError(null)
+    setSavingDescription(true)
+    try {
+      const updated = await api.jobs.update(jobId, {
+        description: editingDescription.trim() || null,
+      })
+      setJob(updated)
+      setEditingDescription(null)
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setSavingDescription(false)
     }
   }
 
@@ -276,20 +296,65 @@ export function JobPage() {
       </Card>
 
       <Card>
-        <button
-          onClick={() => setShowDescription((v) => !v)}
-          className="flex min-h-11 w-full items-center justify-between gap-3 text-left"
-        >
-          <CardTitle>Job description</CardTitle>
-          <span aria-hidden className="text-sm font-normal text-ink-faint">
-            {showDescription ? 'Hide' : 'Show'}
-          </span>
-        </button>
-        {showDescription && (
-          <p className="mt-4 text-sm leading-relaxed whitespace-pre-wrap text-ink-muted">
-            {job.description}
-          </p>
-        )}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <button
+            onClick={() => setShowDescription((v) => !v)}
+            className="flex min-h-11 flex-1 items-center justify-between gap-3 text-left"
+          >
+            <CardTitle>Job description</CardTitle>
+            <span aria-hidden className="text-sm font-normal text-ink-faint">
+              {showDescription ? 'Hide' : 'Show'}
+            </span>
+          </button>
+          {showDescription && editingDescription === null && (
+            <Button
+              variant="ghost"
+              onClick={() => setEditingDescription(job.description ?? '')}
+            >
+              Edit
+            </Button>
+          )}
+        </div>
+
+        {showDescription &&
+          (editingDescription !== null ? (
+            <div className="mt-4 space-y-3">
+              {/* Screenshot parsing can truncate a long posting, and tailoring
+                  works from exactly this text — so it has to be fixable. */}
+              <Textarea
+                rows={14}
+                value={editingDescription}
+                disabled={savingDescription}
+                onChange={(e) => setEditingDescription(e.target.value)}
+                placeholder="Paste the full posting here…"
+              />
+              <div className="flex flex-wrap items-center gap-3">
+                <Button loading={savingDescription} onClick={saveDescription}>
+                  Save description
+                </Button>
+                <Button
+                  variant="ghost"
+                  disabled={savingDescription}
+                  onClick={() => setEditingDescription(null)}
+                >
+                  Cancel
+                </Button>
+                <p className="text-xs text-ink-faint">
+                  Tailoring reads this, so a truncated posting gives a weaker
+                  rewrite.
+                </p>
+              </div>
+            </div>
+          ) : job.description ? (
+            <p className="mt-4 text-sm leading-relaxed whitespace-pre-wrap text-ink-muted">
+              {job.description}
+            </p>
+          ) : (
+            <p className="mt-4 text-sm text-ink-muted">
+              No description saved. Add the posting text to tailor a resume for
+              this role.
+            </p>
+          ))}
       </Card>
 
       {selected ? (

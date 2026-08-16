@@ -20,6 +20,7 @@ import type {
   ApplicationSource,
   ApplicationStatus,
   JobImportResult,
+  JobInput,
   QuickAddInput,
 } from '../lib/types'
 
@@ -78,6 +79,7 @@ function ApplicationCard({
   dragging,
   onMove,
   onPatch,
+  onEditJob,
   onSaveNotes,
   onDelete,
   onDragStart,
@@ -88,12 +90,14 @@ function ApplicationCard({
   dragging: boolean
   onMove: (status: ApplicationStatus) => void
   onPatch: (patch: ApplicationPatch) => void
+  onEditJob: (patch: Partial<JobInput>) => void
   onSaveNotes: (notes: string | null) => void
   onDelete: () => void
   onDragStart: (event: React.DragEvent) => void
   onDragEnd: () => void
 }) {
   const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState(false)
   const [notes, setNotes] = useState(application.notes ?? '')
 
   const { job, tailoring } = application
@@ -240,6 +244,25 @@ function ApplicationCard({
             </label>
           </div>
 
+          {editing ? (
+            <JobEditForm
+              job={job}
+              busy={busy}
+              onCancel={() => setEditing(false)}
+              onSave={(patch) => {
+                onEditJob(patch)
+                setEditing(false)
+              }}
+            />
+          ) : (
+            <button
+              onClick={() => setEditing(true)}
+              className="text-xs font-medium text-brand hover:underline"
+            >
+              Edit job details
+            </button>
+          )}
+
           <label className="block">
             <span className="mb-1 block text-xs text-ink-faint">Notes</span>
             <Textarea
@@ -292,6 +315,84 @@ function ApplicationCard({
         ))}
       </Select>
     </li>
+  )
+}
+
+/**
+ * Corrects the job behind a card.
+ *
+ * Screenshot parsing is fuzzy and a posting can be edited after you save it, so
+ * "wrong forever" was never an acceptable outcome. Everything here except the
+ * description, which is long enough to belong on the job page.
+ */
+function JobEditForm({
+  job,
+  busy,
+  onSave,
+  onCancel,
+}: {
+  job: Application['job']
+  busy: boolean
+  onSave: (patch: Partial<JobInput>) => void
+  onCancel: () => void
+}) {
+  const [form, setForm] = useState({
+    title: job.title,
+    company: job.company,
+    location: job.location ?? '',
+    source_url: job.source_url ?? '',
+    apply_by: job.apply_by ?? '',
+  })
+
+  return (
+    <div className="space-y-2.5 rounded-lg bg-canvas p-2.5 ring-1 ring-edge">
+      {(
+        [
+          ['title', 'Job title', 'text'],
+          ['company', 'Company', 'text'],
+          ['location', 'Location', 'text'],
+          ['source_url', 'Link to the posting', 'url'],
+          ['apply_by', 'Last date to apply', 'date'],
+        ] as const
+      ).map(([key, label, type]) => (
+        <label key={key} className="block">
+          <span className="mb-1 block text-xs text-ink-faint">{label}</span>
+          <Input
+            type={type}
+            value={form[key]}
+            disabled={busy}
+            onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+            className="min-h-9 py-1.5 text-xs"
+          />
+        </label>
+      ))}
+
+      <div className="flex flex-wrap gap-2 pt-1">
+        <Button
+          disabled={busy || !form.title.trim() || !form.company.trim()}
+          onClick={() =>
+            onSave({
+              title: form.title.trim(),
+              company: form.company.trim(),
+              // Blank means "remove it", which null expresses and "" does not.
+              location: form.location.trim() || null,
+              source_url: form.source_url.trim() || null,
+              apply_by: form.apply_by || null,
+            })
+          }
+          className="min-h-9 px-3 text-xs"
+        >
+          Save
+        </Button>
+        <Button
+          variant="ghost"
+          onClick={onCancel}
+          className="min-h-9 px-3 text-xs"
+        >
+          Cancel
+        </Button>
+      </div>
+    </div>
   )
 }
 
@@ -664,6 +765,21 @@ export function BoardPage() {
     }
   }
 
+  async function editJob(application: Application, patch: Partial<JobInput>) {
+    setBusyId(application.id)
+    setError(null)
+    try {
+      await api.jobs.update(application.job.id, patch)
+      // Cards embed a copy of the job, so a full reload is the honest way to
+      // pick the change up everywhere it appears.
+      await load()
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   async function saveNotes(application: Application, notes: string | null) {
     setBusyId(application.id)
     setError(null)
@@ -773,6 +889,7 @@ export function BoardPage() {
                       dragging={draggingId === application.id}
                       onMove={(status) => void move(application, status)}
                       onPatch={(changes) => void patch(application, changes)}
+                      onEditJob={(changes) => void editJob(application, changes)}
                       onSaveNotes={(notes) => void saveNotes(application, notes)}
                       onDelete={() => void remove(application)}
                       onDragStart={(e) => {

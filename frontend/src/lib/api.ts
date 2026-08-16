@@ -303,6 +303,13 @@ export const api = {
     create: (input: JobInput) =>
       json<JobDetail>('/jobs', { method: 'POST', body: JSON.stringify(input) }),
 
+    /** Correct any detail after the fact — parsed data is often imperfect. */
+    update: (id: UUID, patch: Partial<JobInput>) =>
+      json<JobDetail>(`/jobs/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      }),
+
     /** Read a posting out of screenshots. Saves nothing — fills a form. */
     parseScreenshots: (files: File[]) => {
       const form = new FormData()

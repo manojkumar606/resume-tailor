@@ -34,10 +34,22 @@ You are TRANSCRIBING, not summarising or writing. Rules:
   not rephrase it, do not fill in gaps.
 - If a field is not visible in the images, return null for it. Never guess a
   company name from a logo you are unsure of, and never invent a deadline.
-- Several screenshots may be different parts of ONE posting. Stitch the
-  description together in reading order and do not repeat overlapping text.
 - Ignore anything that is not part of the posting: navigation, adverts,
   "similar jobs" lists, cookie banners, the user's own browser chrome.
+
+Every image belongs to ONE posting. They are pieces of it, not separate jobs:
+- They may overlap, may be out of order, and may each show a different part.
+  One might show the header with the company and location while another shows
+  the body. Assemble a single complete posting from all of them.
+- Take each field from whichever image shows it most completely. A later image
+  showing a fragment of the description must NOT replace a fuller version seen
+  in an earlier one — combine them instead and keep everything.
+- Where two images overlap, merge the overlapping text once rather than
+  repeating it, and order the result by the posting's own reading order, not by
+  the order the images were supplied.
+- The description you return should be the longest coherent version supported
+  by the images taken together. Losing text that was visible in any image is a
+  failure.
 
 Return ONLY a JSON object with exactly these keys:
 {

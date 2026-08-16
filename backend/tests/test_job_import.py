@@ -51,6 +51,19 @@ def test_the_model_is_told_to_transcribe_not_summarise(client, auth_headers, fak
     assert "verbatim" in system
 
 
+def test_the_model_is_told_not_to_lose_text_across_images(
+    client, auth_headers, fake_llm
+):
+    """The failure this guards against: a second screenshot showing a fragment
+    of the description replacing the fuller version from the first."""
+    _upload(client, auth_headers, count=2)
+    system = fake_llm.calls[-1]["system"]
+
+    assert "ONE posting" in system
+    assert "must NOT replace a fuller version" in system
+    assert "longest coherent version" in system
+
+
 # ── Refusals ─────────────────────────────────────────────────────────────────
 
 
