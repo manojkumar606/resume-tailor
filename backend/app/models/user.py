@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from app.models.application import Application
     from app.models.job import Job
     from app.models.resume import Resume
+    from app.models.session import Session
     from app.models.tailoring import Tailoring
     from app.models.verification import EmailCode
 
@@ -45,5 +46,8 @@ class User(UUIDMixin, TimestampMixin, Base):
         back_populates="user", cascade="all, delete-orphan"
     )
     email_codes: Mapped[list["EmailCode"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    sessions: Mapped[list["Session"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )

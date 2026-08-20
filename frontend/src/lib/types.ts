@@ -36,6 +36,18 @@ export interface CodeSent {
   detail: string
 }
 
+/** One signed-in device, as listed in settings. */
+export interface DeviceSession {
+  id: UUID
+  /** A short label like "Chrome on Windows" — never the raw user agent. */
+  device: string
+  last_used_at: string
+  created_at: string
+  expires_at: string
+  /** The browser making the request. Cannot be signed out from the list. */
+  is_current: boolean
+}
+
 export interface Resume {
   id: UUID
   name: string

@@ -25,10 +25,17 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
-def create_access_token(subject: UUID | str) -> str:
+def create_access_token(subject: UUID | str, session_id: UUID | str) -> str:
+    """Mint a token bound to a session row.
+
+    The session id is what makes the token revocable. Without it the server has
+    no way to refuse a correctly-signed token before it expires, so signing out
+    could only ever delete the browser's copy.
+    """
     now = datetime.now(UTC)
     payload = {
         "sub": str(subject),
+        "sid": str(session_id),
         "iat": now,
         "exp": now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
         "type": "access",
@@ -36,8 +43,13 @@ def create_access_token(subject: UUID | str) -> str:
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-def decode_access_token(token: str) -> str | None:
-    """Return the subject (user id) if the token is valid, else None."""
+def decode_access_token(token: str) -> tuple[str, str] | None:
+    """Return (user id, session id) if the token is valid, else None.
+
+    A token with no session id is refused rather than trusted. Those were issued
+    before sessions existed and cannot be revoked, so honouring them would keep
+    the original hole open for a week after the fix shipped.
+    """
     try:
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
@@ -46,4 +58,9 @@ def decode_access_token(token: str) -> str | None:
         return None
     if payload.get("type") != "access":
         return None
-    return payload.get("sub")
+
+    subject = payload.get("sub")
+    session_id = payload.get("sid")
+    if not subject or not session_id:
+        return None
+    return subject, session_id

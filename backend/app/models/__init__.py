@@ -8,6 +8,7 @@ from app.models.application import Application, ApplicationSource, ApplicationSt
 from app.models.base import Base
 from app.models.job import Job, JobSource
 from app.models.resume import Resume
+from app.models.session import Session
 from app.models.tailoring import Tailoring, TailoringStatus
 from app.models.user import User
 from app.models.verification import CodePurpose, EmailCode
@@ -22,6 +23,7 @@ __all__ = [
     "Job",
     "JobSource",
     "Resume",
+    "Session",
     "Tailoring",
     "TailoringStatus",
     "User",
