@@ -1,9 +1,9 @@
 import logging
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, Response, status
 from sqlalchemy import select
 
-from app.api.deps import CurrentUser, DbSession, Mailer
+from app.api.deps import CurrentSession, CurrentUser, DbSession, Mailer
 from app.core.config import settings
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.user import User
@@ -20,6 +20,7 @@ from app.schemas.user import (
 )
 from app.services.email import EmailError
 from app.services.unsubscribe import InvalidUnsubscribeToken, read_token
+from app.services import sessions as session_service
 from app.services.email_codes import (
     CodeError,
     consume_code,
@@ -118,7 +119,11 @@ def login(payload: UserLogin, db: DbSession, mailer: Mailer) -> CodeSent:
 
 
 @router.post("/verify-code", response_model=AuthResponse)
-def verify_code(payload: CodeSubmission, db: DbSession) -> AuthResponse:
+def verify_code(
+    payload: CodeSubmission,
+    db: DbSession,
+    user_agent: str = Header(default="", alias="User-Agent"),
+) -> AuthResponse:
     """Exchange a valid code for a session.
 
     This is the only endpoint that mints a token.
@@ -147,11 +152,13 @@ def verify_code(payload: CodeSubmission, db: DbSession) -> AuthResponse:
         # First successful code proves the address is real.
         user.is_verified = True
 
+    # A session row per sign-in, so this token can later be taken back.
+    session = session_service.start_session(db, user, user_agent)
     db.commit()
     db.refresh(user)
 
     return AuthResponse(
-        access_token=create_access_token(user.id),
+        access_token=create_access_token(user.id, session.id),
         user=UserRead.model_validate(user),
     )
 
@@ -209,6 +216,17 @@ def unsubscribe(payload: UnsubscribeRequest, db: DbSession) -> dict:
         db.commit()
 
     return {"detail": "Reminder emails are off. Sign-in codes are unaffected."}
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(session: CurrentSession, db: DbSession) -> Response:
+    """End this session server-side.
+
+    Before sessions existed this endpoint could not have worked: signing out
+    only deleted the browser's copy of a token that stayed valid for a week.
+    """
+    session_service.revoke(db, session)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/me", response_model=UserRead)

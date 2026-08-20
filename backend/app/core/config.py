@@ -35,7 +35,14 @@ class Settings(BaseSettings):
     # --- Security ---
     SECRET_KEY: str = "insecure-dev-key-change-me"
     ALGORITHM: str = "HS256"
+    # Absolute ceiling on a session, regardless of activity.
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
+    # Signed out after this long with no requests. Long enough not to interrupt
+    # a work session, short enough to matter on a shared laptop.
+    SESSION_IDLE_TIMEOUT_MINUTES: int = 120
+    # last_used_at is only rewritten this often, so an active session does not
+    # mean a database write on every single request.
+    SESSION_TOUCH_SECONDS: int = 60
 
     # --- Database ---
     DATABASE_URL: str = ""

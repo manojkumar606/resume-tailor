@@ -156,3 +156,85 @@ describe('the verification gate', () => {
     expect(tokenStore.get()).toBe('good-token')
   })
 })
+
+
+describe('signing out', () => {
+  it('sends the token, because the token identifies the session to revoke', async () => {
+    tokenStore.set('a-live-token')
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }))
+
+    await api.auth.logout()
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toContain('/auth/logout')
+    expect(new Headers(init.headers).get('Authorization')).toBe('Bearer a-live-token')
+  })
+
+  // '/auth/logout' and '/auth/login' share a prefix up to "/auth/log", and the
+  // credential check is a startsWith. Were logout ever classified as a
+  // credential endpoint it would be sent without a token, the server would 401,
+  // and sign-out would silently stop revoking anything.
+  it('is not treated as a credential endpoint', async () => {
+    tokenStore.set('a-live-token')
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }))
+
+    await api.auth.logout()
+
+    const init = fetchMock.mock.calls[0][1]
+    expect(new Headers(init.headers).has('Authorization')).toBe(true)
+  })
+
+  it('surfaces a 401 as an expired session and clears the token', async () => {
+    tokenStore.set('a-dead-token')
+    const onUnauthorized = vi.fn()
+    setUnauthorizedHandler(onUnauthorized)
+    fetchMock.mockResolvedValue(jsonResponse(401, { detail: 'Not authenticated' }))
+
+    await expect(api.auth.logout()).rejects.toThrow(ApiError)
+    expect(tokenStore.get()).toBeNull()
+    expect(onUnauthorized).toHaveBeenCalledOnce()
+  })
+})
+
+describe('the device list', () => {
+  it('asks for the sessions belonging to the caller', async () => {
+    tokenStore.set('a-live-token')
+    fetchMock.mockResolvedValue(jsonResponse(200, []))
+
+    await api.account.sessions()
+
+    expect(fetchMock.mock.calls[0][0]).toContain('/me/sessions')
+  })
+
+  it('revokes one session by id', async () => {
+    tokenStore.set('a-live-token')
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }))
+
+    await api.account.revokeSession('11111111-2222-3333-4444-555555555555')
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toContain('/me/sessions/11111111-2222-3333-4444-555555555555')
+    expect(init.method).toBe('DELETE')
+  })
+
+  it('revokes the others without naming them', async () => {
+    tokenStore.set('a-live-token')
+    fetchMock.mockResolvedValue(jsonResponse(200, { revoked: 2 }))
+
+    const res = await api.account.revokeOtherSessions()
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toMatch(/\/me\/sessions$/)
+    expect(init.method).toBe('DELETE')
+    expect(res.revoked).toBe(2)
+  })
+
+  it('returns undefined rather than exploding on a 204', async () => {
+    tokenStore.set('a-live-token')
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }))
+
+    await expect(
+      api.account.revokeSession('11111111-2222-3333-4444-555555555555'),
+    ).resolves.toBeUndefined()
+  })
+})

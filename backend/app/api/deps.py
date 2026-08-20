@@ -11,26 +11,33 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session as OrmSession
 
 from app.core.db import get_db
 from app.core.security import decode_access_token
+from app.models.session import Session
 from app.models.user import User
 from app.services.email import EmailError, EmailProvider, get_email_provider
+from app.services import sessions as session_service
 
 logger = logging.getLogger(__name__)
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
-DbSession = Annotated[Session, Depends(get_db)]
+DbSession = Annotated[OrmSession, Depends(get_db)]
 
 
-def get_current_user(
+def get_current_session(
     db: DbSession,
     credentials: Annotated[
         HTTPAuthorizationCredentials | None, Depends(bearer_scheme)
     ] = None,
-) -> User:
+) -> Session:
+    """Resolve the bearer token to a live session row.
+
+    Every rejection returns the same 401. Distinguishing "revoked" from "idle"
+    from "never existed" would tell an attacker which tokens are real.
+    """
     unauthorized = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Not authenticated",
@@ -40,19 +47,35 @@ def get_current_user(
     if credentials is None:
         raise unauthorized
 
-    subject = decode_access_token(credentials.credentials)
-    if subject is None:
+    decoded = decode_access_token(credentials.credentials)
+    if decoded is None:
         raise unauthorized
 
+    raw_user_id, raw_session_id = decoded
     try:
-        user_id = uuid.UUID(subject)
+        user_id = uuid.UUID(raw_user_id)
+        session_id = uuid.UUID(raw_session_id)
     except ValueError:
         raise unauthorized from None
 
-    user = db.get(User, user_id)
-    if user is None or not user.is_active:
+    session = session_service.load_active(db, session_id)
+    # The user id is checked against the row as well: a token whose subject and
+    # session disagree is malformed, not merely stale.
+    if session is None or session.user_id != user_id:
         raise unauthorized
-    return user
+
+    if session.user is None or not session.user.is_active:
+        raise unauthorized
+
+    session_service.touch(db, session)
+    return session
+
+
+CurrentSession = Annotated[Session, Depends(get_current_session)]
+
+
+def get_current_user(session: CurrentSession) -> User:
+    return session.user
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]

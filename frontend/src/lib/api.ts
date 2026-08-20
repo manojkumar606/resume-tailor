@@ -3,6 +3,7 @@ import type {
   ApplicationPatch,
   AuthResponse,
   CodeSent,
+  DeviceSession,
   Job,
   JobDetail,
   JobImportResult,
@@ -249,6 +250,15 @@ export const api = {
 
     me: () => json<User>('/auth/me'),
 
+    /**
+     * Ends the session server-side. Sent with the token, because the token is
+     * what identifies the session being revoked.
+     *
+     * Failure is ignored by the caller: the local token is cleared either way,
+     * so the worst case is a row that expires on idle instead of immediately.
+     */
+    logout: () => json<void>('/auth/logout', { method: 'POST' }),
+
     /** Turn reminders off from an emailed link. Needs no session. */
     unsubscribe: (token: string) =>
       json<{ detail: string }>('/auth/unsubscribe', {
@@ -262,6 +272,15 @@ export const api = {
       json<User>('/me', { method: 'PATCH', body: JSON.stringify(patch) }),
 
     exportCsv: () => download('/me/export', 'applications.csv'),
+
+    sessions: () => json<DeviceSession[]>('/me/sessions'),
+
+    revokeSession: (id: UUID) =>
+      json<void>(`/me/sessions/${id}`, { method: 'DELETE' }),
+
+    /** Signs out every other device, keeping this one. */
+    revokeOtherSessions: () =>
+      json<{ revoked: number }>('/me/sessions', { method: 'DELETE' }),
 
     /** Irreversible. The email is typed back as confirmation. */
     remove: (confirmEmail: string) =>

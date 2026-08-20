@@ -1,20 +1,24 @@
 import csv
 import io
 import logging
+import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Response, status
 from sqlalchemy import delete, select
 from sqlalchemy.orm import joinedload
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentSession, CurrentUser, DbSession
 from app.models.application import Application
 from app.models.job import Job
 from app.models.resume import Resume
+from app.models.session import Session
 from app.models.tailoring import Tailoring
 from app.models.user import User
 from app.models.verification import EmailCode
+from app.schemas.session import RevokedSessions, SessionRead
 from app.schemas.user import AccountDeleteRequest, UserRead, UserUpdate
+from app.services import sessions as session_service
 from app.services.storage import StorageError, get_storage
 
 logger = logging.getLogger(__name__)
@@ -147,6 +151,7 @@ def delete_my_account(
     db.execute(delete(Resume).where(Resume.user_id == user_id))
     db.execute(delete(Job).where(Job.user_id == user_id))
     db.execute(delete(EmailCode).where(EmailCode.user_id == user_id))
+    db.execute(delete(Session).where(Session.user_id == user_id))
     db.execute(delete(User).where(User.id == user_id))
     db.commit()
 
@@ -160,3 +165,59 @@ def delete_my_account(
             logger.warning("Could not remove a stored file during account deletion")
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/sessions", response_model=list[SessionRead])
+def list_my_sessions(
+    current_session: CurrentSession, current_user: CurrentUser, db: DbSession
+) -> list[SessionRead]:
+    """Every device currently signed in to this account.
+
+    Worth showing even when nothing is wrong: it is the only way to notice a
+    session you do not recognise, and the only way to end one from elsewhere.
+    """
+    return [
+        SessionRead(
+            id=row.id,
+            device=session_service.describe_device(row.user_agent),
+            last_used_at=row.last_used_at,
+            created_at=row.created_at,
+            expires_at=row.expires_at,
+            is_current=row.id == current_session.id,
+        )
+        for row in session_service.list_active(db, current_user.id)
+    ]
+
+
+@router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+def revoke_my_session(
+    session_id: uuid.UUID, current_user: CurrentUser, db: DbSession
+) -> Response:
+    """End one session.
+
+    404 rather than 403 for a session belonging to someone else, so this cannot
+    be used to discover whether a given session id exists.
+    """
+    row = db.get(Session, session_id)
+    if row is None or row.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Session not found."
+        )
+
+    session_service.revoke(db, row)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/sessions", response_model=RevokedSessions)
+def revoke_my_other_sessions(
+    current_session: CurrentSession, current_user: CurrentUser, db: DbSession
+) -> RevokedSessions:
+    """Sign out everywhere else, keeping this device signed in.
+
+    This is what someone reaches for after losing a laptop, so it must not
+    require them to identify which row was the laptop.
+    """
+    count = session_service.revoke_all_except(
+        db, current_user.id, keep=current_session.id
+    )
+    return RevokedSessions(revoked=count)

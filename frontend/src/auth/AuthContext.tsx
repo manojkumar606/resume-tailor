@@ -10,6 +10,8 @@ import {
 
 import { api, setUnauthorizedHandler, tokenStore } from '../lib/api'
 import type { CodeSent, User } from '../lib/types'
+import type { SignOutReason } from './idle'
+import { useIdleTimeout } from './useIdleTimeout'
 
 interface AuthState {
   user: User | null
@@ -30,7 +32,15 @@ interface AuthState {
 
   /** Re-read the current user. */
   refresh: () => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>
+
+  /**
+   * Why the last session ended, so the sign-in page can say so. Cleared once
+   * shown; deliberately not persisted, since a fresh page load is not the
+   * moment to explain something that happened before it.
+   */
+  signOutReason: SignOutReason
+  clearSignOutReason: () => void
 }
 
 const AuthContext = createContext<AuthState | null>(null)
@@ -38,18 +48,51 @@ const AuthContext = createContext<AuthState | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [initialising, setInitialising] = useState(true)
+  const [signOutReason, setSignOutReason] = useState<SignOutReason>(null)
 
-  const logout = useCallback(() => {
-    tokenStore.clear()
-    setUser(null)
-  }, [])
+  /**
+   * Clear the local session. The server call comes first so the session row is
+   * revoked, but its failure is swallowed: the token is dropped locally either
+   * way, and a session left to expire on idle is far better than a sign-out
+   * button that refuses to work because the network is down.
+   */
+  const endSession = useCallback(
+    async (reason: Exclude<SignOutReason, null>) => {
+      if (tokenStore.get()) {
+        try {
+          await api.auth.logout()
+        } catch {
+          // Deliberately silent: the user asked to leave, and telling them the
+          // sign-out "failed" while signing them out anyway is just alarming.
+        }
+      }
+      tokenStore.clear()
+      setUser(null)
+      setSignOutReason(reason)
+    },
+    [],
+  )
+
+  const logout = useCallback(() => endSession('manual'), [endSession])
 
   // A 401 from any request means the token is dead — drop the session once,
   // centrally, instead of every caller handling it.
   useEffect(() => {
-    setUnauthorizedHandler(() => setUser(null))
+    setUnauthorizedHandler(() => {
+      setUser(null)
+      // The server ended it — idle timeout it enforced itself, a sign-out from
+      // another device, or the absolute expiry. Worth saying, since from here
+      // it looks like being thrown out at random.
+      setSignOutReason('expired')
+    })
     return () => setUnauthorizedHandler(null)
   }, [])
+
+  // Only armed while signed in, so the timer is not running on the landing or
+  // sign-in pages.
+  useIdleTimeout(() => {
+    void endSession('idle')
+  }, user !== null)
 
   // A token in localStorage is not proof of a valid session: it may have
   // expired, or the user may have been deleted. Verify it before trusting it.
@@ -92,7 +135,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await api.auth.verifyCode(email, code)
     tokenStore.set(res.access_token)
     setUser(res.user)
+    setSignOutReason(null)
   }, [])
+
+  const clearSignOutReason = useCallback(() => setSignOutReason(null), [])
 
   const resendCode = useCallback(async (email: string) => {
     const res = await api.auth.resendCode(email)
@@ -113,6 +159,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       resendCode,
       refresh,
       logout,
+      signOutReason,
+      clearSignOutReason,
     }),
     [
       user,
@@ -123,6 +171,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       resendCode,
       refresh,
       logout,
+      signOutReason,
+      clearSignOutReason,
     ],
   )
 

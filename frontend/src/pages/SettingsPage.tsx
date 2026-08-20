@@ -1,11 +1,161 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { useAuth } from '../auth/AuthContext'
-import { Button, Card, CardTitle, ErrorNote, Input, Toggle } from '../components/ui'
+import {
+  Button,
+  Card,
+  CardTitle,
+  ErrorNote,
+  Input,
+  Spinner,
+  Toggle,
+} from '../components/ui'
 import { api } from '../lib/api'
+import type { DeviceSession, UUID } from '../lib/types'
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Something went wrong.'
+}
+
+/** "3 minutes ago", "yesterday". Absolute timestamps make the reader do
+ *  arithmetic to answer the only question that matters: is this recent? */
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return 'unknown'
+
+  const seconds = Math.round((Date.now() - then) / 1000)
+  if (seconds < 90) return 'just now'
+
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes} min ago`
+
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`
+
+  const days = Math.round(hours / 24)
+  if (days === 1) return 'yesterday'
+  return `${days} days ago`
+}
+
+// ── Signed-in devices ────────────────────────────────────────────────────────
+
+function SessionsCard() {
+  const [rows, setRows] = useState<DeviceSession[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<UUID | 'all' | null>(null)
+
+  const load = useCallback(async () => {
+    try {
+      setRows(await api.account.sessions())
+    } catch (err) {
+      setError(errorMessage(err))
+      setRows([])
+    }
+  }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  async function revokeOne(id: UUID) {
+    setError(null)
+    setBusyId(id)
+    try {
+      await api.account.revokeSession(id)
+      await load()
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function revokeOthers() {
+    setError(null)
+    setBusyId('all')
+    try {
+      await api.account.revokeOtherSessions()
+      await load()
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const others = (rows ?? []).filter((row) => !row.is_current).length
+
+  return (
+    <Card>
+      <CardTitle>Signed-in devices</CardTitle>
+      <p className="mt-2 text-sm leading-relaxed text-ink-muted">
+        Anything signed in to this account. Sessions end on their own after two
+        hours of inactivity — but if you spot something you don't recognise, or
+        left yourself signed in somewhere, end it here.
+      </p>
+
+      {rows === null ? (
+        <div className="mt-4">
+          <Spinner label="Loading devices" />
+        </div>
+      ) : (
+        <ul className="mt-4 divide-y divide-edge">
+          {rows.map((row) => (
+            <li
+              key={row.id}
+              className="flex flex-wrap items-center justify-between gap-3 py-3"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-ink">
+                  {row.device}
+                  {row.is_current && (
+                    <span className="ml-2 rounded-full bg-raised px-2 py-0.5 text-xs font-normal text-ink-muted ring-1 ring-edge">
+                      This device
+                    </span>
+                  )}
+                </p>
+                <p className="mt-0.5 text-xs text-ink-faint">
+                  Last active {relativeTime(row.last_used_at)} · signed in{' '}
+                  {relativeTime(row.created_at)}
+                </p>
+              </div>
+
+              {/* No sign-out button on the current row: that is what the header
+                  button does, and offering it twice invites confusion about
+                  whether it means "here" or "everywhere". */}
+              {!row.is_current && (
+                <Button
+                  variant="secondary"
+                  loading={busyId === row.id}
+                  onClick={() => revokeOne(row.id)}
+                >
+                  Sign out
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {others > 0 && (
+        <div className="mt-4 border-t border-edge pt-4">
+          <Button
+            variant="secondary"
+            loading={busyId === 'all'}
+            onClick={revokeOthers}
+          >
+            Sign out {others === 1 ? 'the other device' : `all ${others} others`}
+          </Button>
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-4">
+          <ErrorNote>{error}</ErrorNote>
+        </div>
+      )}
+    </Card>
+  )
 }
 
 // ── Reminders ────────────────────────────────────────────────────────────────
@@ -194,6 +344,7 @@ export function SettingsPage() {
       </header>
 
       <div className="space-y-5">
+        <SessionsCard />
         <RemindersCard />
         <ExportCard />
         <DangerCard />

@@ -211,7 +211,8 @@ function CodeStep({
 
 export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const isSignup = mode === 'signup'
-  const { user, requestSignup, requestLogin } = useAuth()
+  const { user, requestSignup, requestLogin, signOutReason, clearSignOutReason } =
+    useAuth()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -220,6 +221,19 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const [busy, setBusy] = useState(false)
   // Set once a code has been sent; its presence is what shows step two.
   const [pending, setPending] = useState<{ email: string; minutes: number } | null>(null)
+
+  // Shown once. Held in state at mount so it survives clearing the reason,
+  // which has to happen immediately — otherwise it reappears on every later
+  // visit to this page within the same page load.
+  const [signedOutNotice] = useState(() =>
+    !isSignup && (signOutReason === 'idle' || signOutReason === 'expired')
+      ? signOutReason
+      : null,
+  )
+
+  useEffect(() => {
+    if (signedOutNotice) clearSignOutReason()
+  }, [signedOutNotice, clearSignOutReason])
 
   if (user) return <Navigate to="/app" replace />
 
@@ -314,6 +328,17 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
                     : 'Sign in to pick up where you left off.'}
                 </p>
               </div>
+
+              {signedOutNotice && (
+                <p
+                  role="status"
+                  className="mb-5 rounded-lg bg-raised px-3.5 py-3 text-sm leading-relaxed text-ink-muted ring-1 ring-edge"
+                >
+                  {signedOutNotice === 'idle'
+                    ? 'You were signed out after a long spell of inactivity. Nothing was lost — everything is saved.'
+                    : 'Your session has ended. Sign in again to carry on; nothing was lost.'}
+                </p>
+              )}
 
               <Card>
                 <form onSubmit={handleSubmit} className="space-y-4">
