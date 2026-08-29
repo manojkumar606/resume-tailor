@@ -100,6 +100,11 @@ class Settings(BaseSettings):
 
     # --- LLM ---
     LLM_PROVIDER: str = "gemini"
+    # A busy model answers 503 often enough that one attempt is not a fair try.
+    # Affordable only because tailoring runs in the background: nobody is
+    # holding a connection open while this backs off.
+    LLM_MAX_ATTEMPTS: int = 3
+    LLM_RETRY_BASE_SECONDS: float = 2.0
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.0-flash"
 
