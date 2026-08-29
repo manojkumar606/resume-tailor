@@ -1,6 +1,6 @@
 """Database engine, session factory, and the FastAPI session dependency."""
 
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -31,3 +31,14 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+def get_session_factory() -> Callable[[], Session]:
+    """The session factory, as a dependency.
+
+    Background work outlives the request, and the request's session is closed
+    the moment the response is sent — so a task has to open its own. Injected
+    rather than imported directly so tests can point it at their in-memory
+    database instead of the real engine.
+    """
+    return SessionLocal

@@ -324,9 +324,17 @@ browser blocks every request.
 
 - Render free instances sleep after ~15 minutes idle; the next request pays a
   cold start of roughly a minute.
-- Tailoring holds the HTTP request open for 10–20 seconds. It works, but it ties
-  up a worker for the duration. Moving it behind a queue is the main reason the
-  `tailorings` table carries a `status` column.
+- Tailoring runs in the background and the client polls the row's `status`,
+  so no request is held open for the 10–20 seconds a run takes. It uses
+  Starlette's `BackgroundTasks` in the same process rather than a queue: Render
+  bills Background Workers, and a broker is more machinery than a
+  single-container app needs.
+
+  The cost of that choice: **a run is lost if the container restarts mid-run.**
+  Nothing is corrupted — a row still marked `running` after
+  `TAILORING_TIMEOUT_MINUTES` is failed on the next read, with a message asking
+  the user to try again — but the work itself does not resume. The fix is a real
+  queue on a paid plan.
 
 ## Migrations
 

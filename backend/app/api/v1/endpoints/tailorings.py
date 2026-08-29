@@ -1,23 +1,34 @@
 import uuid
-from datetime import UTC, datetime
+from collections.abc import Callable
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    Response,
+    status,
+)
 from sqlalchemy import select
+from sqlalchemy.orm import Session as OrmSession
 
 from app.api.deps import DbSession, VerifiedUser
+from app.core.db import get_session_factory
 from app.models.job import Job
 from app.models.resume import Resume
 from app.models.tailoring import Tailoring, TailoringStatus
 from app.schemas.tailoring import TailoringCreate, TailoringDetail, TailoringRead
-from app.services.docx_writer import build_resume_docx
-from app.services.llm import LLMError, LLMProvider, get_llm_provider
-from app.services.storage import StorageError, build_key, get_storage
-from app.services.tailoring import build_critique, tailor
+from app.services.llm import LLMProvider, get_llm_provider
+from app.services.storage import StorageError, get_storage
+from app.services.tailoring import build_critique
+from app.services.tailoring_runner import reap_if_stalled, run_tailoring
 
 router = APIRouter(prefix="/tailorings", tags=["tailorings"])
 
 Provider = Annotated[LLMProvider, Depends(get_llm_provider)]
+SessionFactory = Annotated[Callable[[], OrmSession], Depends(get_session_factory)]
 
 
 def _get_owned_tailoring(
@@ -30,20 +41,24 @@ def _get_owned_tailoring(
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Tailoring not found")
-    return row
+    return reap_if_stalled(db, row)
 
 
-@router.post("", response_model=TailoringDetail, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=TailoringDetail, status_code=status.HTTP_202_ACCEPTED)
 def create_tailoring(
     payload: TailoringCreate,
     current_user: VerifiedUser,
     db: DbSession,
     provider: Provider,
+    session_factory: SessionFactory,
+    background: BackgroundTasks,
 ) -> Tailoring:
-    """Tailor a resume for a job.
+    """Start tailoring a resume for a job.
 
-    Runs inline today. The row carries a status so this can move behind a
-    worker queue later and return 202 without the client contract changing.
+    Returns immediately with a `pending` row; the client polls it. Every
+    validation below still happens synchronously, so a bad request is still a
+    4xx the user sees straight away rather than a failed row they have to go
+    and look up.
     """
     job = db.scalar(
         select(Job).where(Job.id == payload.job_id, Job.user_id == current_user.id)
@@ -124,7 +139,7 @@ def create_tailoring(
         user_id=current_user.id,
         job_id=job.id,
         resume_id=resume.id,
-        status=TailoringStatus.RUNNING,
+        status=TailoringStatus.PENDING,
         model=getattr(provider, "model_name", None),
         refine_of_id=payload.refine_of,
         feedback=payload.feedback or None,
@@ -134,48 +149,16 @@ def create_tailoring(
     db.commit()
     db.refresh(row)
 
-    try:
-        result = tailor(
-            provider,
-            resume_text=resume.parsed_text,
-            job_title=job.title,
-            company=job.company,
-            description=job.description,
-            previous_attempt=previous_attempt,
-            critique=critique,
-        )
-    except LLMError as exc:
-        # Persist the failure rather than losing it: the user can see why, and
-        # the row stays as a record of the attempt.
-        row.status = TailoringStatus.FAILED
-        row.error = str(exc)
-        row.completed_at = datetime.now(UTC)
-        db.commit()
-        db.refresh(row)
-        raise HTTPException(status_code=502, detail=f"Tailoring failed: {exc}") from exc
-
-    key = build_key(current_user.id, "tailored", f"{job.company}.docx")
-    try:
-        get_storage().save(key, build_resume_docx(result.tailored_text))
-    except Exception as exc:
-        row.status = TailoringStatus.FAILED
-        row.error = f"Could not generate the document: {exc}"
-        row.completed_at = datetime.now(UTC)
-        db.commit()
-        db.refresh(row)
-        raise HTTPException(
-            status_code=500, detail="Could not generate the document"
-        ) from exc
-
-    row.status = TailoringStatus.SUCCEEDED
-    row.tailored_text = result.tailored_text
-    row.match_score = result.match_score
-    row.missing_keywords = result.missing_keywords
-    row.changes = result.changes
-    row.output_file_key = key
-    row.completed_at = datetime.now(UTC)
-    db.commit()
-    db.refresh(row)
+    # Queued rather than awaited. Starlette runs this after the response is
+    # sent, so the row id is already with the client by the time work begins.
+    background.add_task(
+        run_tailoring,
+        row.id,
+        provider,
+        session_factory,
+        previous_attempt=previous_attempt,
+        critique=critique,
+    )
     return row
 
 
@@ -191,7 +174,7 @@ def list_tailorings(
     if job_id is not None:
         stmt = stmt.where(Tailoring.job_id == job_id)
     stmt = stmt.order_by(Tailoring.created_at.desc()).limit(limit).offset(offset)
-    return list(db.scalars(stmt))
+    return [reap_if_stalled(db, row) for row in db.scalars(stmt)]
 
 
 @router.get("/{tailoring_id}", response_model=TailoringDetail)
