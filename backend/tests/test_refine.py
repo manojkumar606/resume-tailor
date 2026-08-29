@@ -18,6 +18,15 @@ def _tailor(client, headers, job_id, **extra):
     return client.post(TAILORINGS, headers=headers, json={"job_id": job_id, **extra})
 
 
+def _finished(client, headers, response):
+    """Read a run back once it has completed.
+
+    The POST answers with a pending row now, so anything that needs the tailored
+    text has to fetch it rather than read the create response.
+    """
+    return client.get(f"{TAILORINGS}/{response.json()['id']}", headers=headers).json()
+
+
 # ── The prompt ───────────────────────────────────────────────────────────────
 
 
@@ -36,7 +45,7 @@ def test_a_refine_sends_the_previous_text_and_the_complaints(
     client, auth_headers, docx_bytes, job_payload, fake_llm
 ):
     job = _setup(client, auth_headers, docx_bytes, job_payload)
-    first = _tailor(client, auth_headers, job["id"]).json()
+    first = _finished(client, auth_headers, _tailor(client, auth_headers, job["id"]))
 
     r = _tailor(
         client,
@@ -46,7 +55,7 @@ def test_a_refine_sends_the_previous_text_and_the_complaints(
         feedback=CHIPS,
         feedback_notes="Lead with the platform work, not the reporting.",
     )
-    assert r.status_code == 201, r.text
+    assert r.status_code == 202, r.text
 
     prompt = fake_llm.calls[-1]["prompt"]
     # The model needs the text it is revising, or it just starts over.

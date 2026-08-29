@@ -47,6 +47,14 @@ class Settings(BaseSettings):
     # --- Database ---
     DATABASE_URL: str = ""
 
+    # --- Tailoring ---
+    # A run still marked running after this long is treated as dead. The only
+    # way that happens is the container restarting mid-run, which loses the
+    # in-process task with nothing left to write the failure.
+    TAILORING_TIMEOUT_MINUTES: int = 5
+    # How often the client asks whether a run has finished.
+    TAILORING_POLL_SECONDS: int = 2
+
     # --- Email ---
     # console → verification links are logged, nothing is sent. Development
     #           and tests, so no mail account is required.

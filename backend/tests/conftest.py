@@ -26,7 +26,7 @@ from sqlalchemy.pool import StaticPool  # noqa: E402
 
 import re  # noqa: E402
 
-from app.core.db import get_db  # noqa: E402
+from app.core.db import get_db, get_session_factory  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base  # noqa: E402
 from app.api.deps import get_mailer  # noqa: E402
@@ -81,6 +81,10 @@ def mailbox():
 def client(db_session, mailbox):
     app.dependency_overrides[get_db] = lambda: db_session
     app.dependency_overrides[get_mailer] = lambda: mailbox
+    # Background tasks open their own session, which in production means a new
+    # connection to Postgres. Pointed at the shared in-memory database here, or
+    # the task would create an empty second one and find no tables.
+    app.dependency_overrides[get_session_factory] = lambda: (lambda: db_session)
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

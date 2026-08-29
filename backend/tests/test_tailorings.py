@@ -15,16 +15,40 @@ def _setup(client, headers, docx_bytes, job_payload):
     return resume, job
 
 
-def test_tailoring_succeeds_and_stores_the_analysis(
+def test_the_request_returns_immediately_with_a_pending_run(
     client, auth_headers, docx_bytes, job_payload, fake_llm
 ):
+    """The whole point of the change: the caller is not held for 14 seconds."""
     _, job = _setup(client, auth_headers, docx_bytes, job_payload)
 
     r = client.post(
         "/api/v1/tailorings", headers=auth_headers, json={"job_id": job["id"]}
     )
-    assert r.status_code == 201, r.text
+    assert r.status_code == 202, r.text
     body = r.json()
+    assert body["status"] == "pending"
+    assert body["tailored_text"] is None
+    assert body["completed_at"] is None
+    # The id has to come back, or the client has nothing to poll.
+    assert body["id"]
+
+
+def test_the_run_then_completes_and_stores_the_analysis(
+    client, auth_headers, docx_bytes, job_payload, fake_llm
+):
+    """TestClient runs background tasks once the response has been sent, so by
+    the time the next request happens the work is done — the same order a real
+    client sees, just without the wait."""
+    _, job = _setup(client, auth_headers, docx_bytes, job_payload)
+
+    started = client.post(
+        "/api/v1/tailorings", headers=auth_headers, json={"job_id": job["id"]}
+    ).json()
+
+    body = client.get(
+        f"/api/v1/tailorings/{started['id']}", headers=auth_headers
+    ).json()
+
     assert body["status"] == "succeeded"
     assert body["match_score"] == 78
     assert body["missing_keywords"] == ["Snowflake administration"]
@@ -77,23 +101,40 @@ def test_unknown_job_is_404(client, auth_headers, docx_bytes, fake_llm):
     assert r.status_code == 404
 
 
-def test_llm_failure_is_502_and_the_attempt_is_recorded(
+def test_llm_failure_lands_on_the_row_rather_than_the_response(
     client, auth_headers, docx_bytes, job_payload, fake_llm
 ):
+    """The request is already answered by the time the model is called, so a
+    provider failure can no longer be an HTTP error. It has to be written to
+    the row, which is the only place the client will look for it."""
     _, job = _setup(client, auth_headers, docx_bytes, job_payload)
     fake_llm.error = LLMError("quota exceeded")
 
     r = client.post(
         "/api/v1/tailorings", headers=auth_headers, json={"job_id": job["id"]}
     )
-    assert r.status_code == 502
-    assert "quota exceeded" in r.json()["detail"]
+    assert r.status_code == 202
 
-    # The failed run must still be visible, with the reason.
     listed = client.get("/api/v1/tailorings", headers=auth_headers).json()
     assert len(listed) == 1
     assert listed[0]["status"] == "failed"
     assert "quota exceeded" in listed[0]["error"]
+
+
+def test_a_bad_request_is_still_refused_before_anything_is_queued(
+    client, auth_headers, docx_bytes, job_payload, fake_llm
+):
+    """Validation stays synchronous. A user who picked a job that does not exist
+    should be told at once, not left polling a row that was never going to
+    work."""
+    r = client.post(
+        "/api/v1/tailorings",
+        headers=auth_headers,
+        json={"job_id": "00000000-0000-0000-0000-000000000000"},
+    )
+    assert r.status_code == 404
+    assert client.get("/api/v1/tailorings", headers=auth_headers).json() == []
+    assert fake_llm.calls == []
 
 
 def test_download_returns_a_docx(

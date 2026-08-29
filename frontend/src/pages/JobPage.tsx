@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import {
@@ -16,6 +16,7 @@ import { RefinePanel } from '../components/RefinePanel'
 import { ScoreDial } from '../components/ScoreDial'
 import { TailoringProgress } from '../components/TailoringProgress'
 import { api } from '../lib/api'
+import { PollTimeout, isFinished, pollUntilFinished } from '../lib/pollTailoring'
 import type { JobDetail, Resume, Tailoring, TailoringDetail } from '../lib/types'
 
 function errorMessage(err: unknown): string {
@@ -122,6 +123,38 @@ export function JobPage() {
   const [editingDescription, setEditingDescription] = useState<string | null>(null)
   const [savingDescription, setSavingDescription] = useState(false)
 
+  // Polling must stop when the user navigates away, or it keeps requesting a
+  // row nobody is looking at and then writes to unmounted state.
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+
+  /**
+   * Wait for a queued run and show it when it lands.
+   *
+   * The request that starts a run now returns a `pending` row, so the result
+   * arrives by polling rather than in the response. Shared by a fresh tailor
+   * and a refine because the waiting is identical either way.
+   */
+  const awaitRun = useCallback(
+    async (started: TailoringDetail) => {
+      setSelected(started)
+      const finished = await pollUntilFinished(started.id, {
+        fetchOne: (id) => api.tailorings.get(id),
+        onUpdate: (row) => {
+          if (mounted.current) setSelected(row)
+        },
+        isActive: () => mounted.current,
+      })
+      if (finished && mounted.current) setSelected(finished)
+    },
+    [],
+  )
+
   const load = useCallback(async () => {
     setError(null)
     try {
@@ -135,7 +168,30 @@ export function JobPage() {
       setHistory(tailoringList)
       setResumeId(resumeList.find((r) => r.is_default)?.id ?? resumeList[0]?.id ?? '')
 
-      // Show the most recent successful run so a refresh doesn't lose results.
+      // A run still going when the page was reloaded. The work is on the
+      // server, not in the tab that started it, so it can simply be picked back
+      // up — this is the whole reason the result is a row rather than a
+      // response body.
+      const inFlight = tailoringList.find(
+        (t) => t.status === 'pending' || t.status === 'running',
+      )
+      if (inFlight) {
+        setTailoring(true)
+        // Not awaited: the page should finish loading while this runs.
+        void api.tailorings
+          .get(inFlight.id)
+          .then(awaitRun)
+          .catch((err) => {
+            if (mounted.current) setError(errorMessage(err))
+          })
+          .finally(() => {
+            if (mounted.current) setTailoring(false)
+          })
+        return
+      }
+
+      // Otherwise show the most recent successful run, so a refresh does not
+      // lose a result that is already finished.
       const latest = tailoringList.find((t) => t.status === 'succeeded')
       if (latest) setSelected(await api.tailorings.get(latest.id))
     } catch (err) {
@@ -143,7 +199,7 @@ export function JobPage() {
     } finally {
       setLoading(false)
     }
-  }, [jobId])
+  }, [jobId, awaitRun])
 
   useEffect(() => {
     void load()
@@ -153,18 +209,20 @@ export function JobPage() {
     setError(null)
     setTailoring(true)
     try {
-      setSelected(await api.tailorings.create(jobId, resumeId || undefined))
-      setHistory(await api.tailorings.listForJob(jobId))
+      await awaitRun(await api.tailorings.create(jobId, resumeId || undefined))
     } catch (err) {
-      setError(errorMessage(err))
-      // A failed run is still recorded server-side — reflect that in history.
-      try {
-        setHistory(await api.tailorings.listForJob(jobId))
-      } catch {
-        // Ignore: the primary error is already shown.
-      }
+      setError(
+        err instanceof PollTimeout ? err.message : errorMessage(err),
+      )
     } finally {
-      setTailoring(false)
+      if (mounted.current) setTailoring(false)
+      // History is refreshed whatever happened: a failed run is still a run,
+      // and it belongs in the version list.
+      try {
+        if (mounted.current) setHistory(await api.tailorings.listForJob(jobId))
+      } catch {
+        // Ignore: any primary error is already shown.
+      }
     }
   }
 
@@ -174,18 +232,22 @@ export function JobPage() {
     setError(null)
     setTailoring(true)
     try {
-      setSelected(
+      await awaitRun(
         await api.tailorings.create(jobId, resumeId || undefined, {
           refine_of: selected.id,
           feedback,
           feedback_notes: notes || null,
         }),
       )
-      setHistory(await api.tailorings.listForJob(jobId))
     } catch (err) {
-      setError(errorMessage(err))
+      setError(err instanceof PollTimeout ? err.message : errorMessage(err))
     } finally {
-      setTailoring(false)
+      if (mounted.current) setTailoring(false)
+      try {
+        if (mounted.current) setHistory(await api.tailorings.listForJob(jobId))
+      } catch {
+        // Ignore: any primary error is already shown.
+      }
     }
   }
 
@@ -357,7 +419,10 @@ export function JobPage() {
           ))}
       </Card>
 
-      {selected ? (
+      {/* A queued run has nothing to show yet — the progress panel above is
+          already saying so, and an empty scorecard beneath it reads as a
+          result that came back blank. */}
+      {selected && isFinished(selected.status) ? (
         <>
           <TailoringResult
             tailoring={selected}
@@ -370,7 +435,7 @@ export function JobPage() {
             <RefinePanel onRefine={handleRefine} busy={tailoring} />
           )}
         </>
-      ) : (
+      ) : tailoring ? null : (
         <Card>
           <EmptyState>
             No tailored version yet. Pick a resume and tailor it for this role.
