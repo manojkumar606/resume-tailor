@@ -16,9 +16,11 @@ broken test suite once.
   `alembic upgrade head && uvicorn`, so a migration the code does not know about
   takes the whole app down. This happened on 2026-08-12. Code and migration ship
   in the same push, always.
-- **Push a branch and open a PR, not straight to `main`.** Render deploys `main`
-  and its "wait for CI checks" gate is **not enabled**, so a push to `main`
-  deploys before CI has run. The PR is the manual substitute.
+- **Push a branch and open a PR for anything that is code.** Render's "wait for
+  CI checks to pass" gate is **on** since 2026-08-29, so a red build no longer
+  reaches production — that was the catastrophic case and it is closed. What a
+  PR still buys is a `main` that is never red, and a place to read a change
+  before it is merged. Docs-only changes can go straight to `main`.
 - **Error text that reaches a user is a sentence, not a log line.** A raw
   provider response on screen is a bug. Log the detail, raise the sentence.
 

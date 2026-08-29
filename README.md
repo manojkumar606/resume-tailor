@@ -201,14 +201,15 @@ type-checking build on every push and pull request. It needs no secrets: the
 tests use in-memory SQLite with fake email and model providers, so CI never
 touches Neon, Brevo, Gemini or R2.
 
-The workflow produces the checks; turning them into a **gate** is two dashboard
-toggles, because Render and Vercel deploy from the same push independently:
+The workflow produces the checks; turning them into a **gate** is a dashboard
+toggle, because Render and Vercel deploy from the same push independently:
 
 - **Render** → service → Settings → Build & Deploy → *Wait for CI checks to pass*
+  — **enabled**. A failing suite now holds the deploy instead of racing it.
 - **Vercel** → project → Settings → Git → *Ignored Build Step* (or require the
-  check via branch protection)
-
-Without those, a red build still deploys.
+  check via branch protection) — not set. Lower stakes: a bad frontend build
+  fails loudly and in isolation, whereas a bad migration takes the API down
+  with it, because the container runs `alembic upgrade head && uvicorn`.
 
 ## Daily reminders
 
